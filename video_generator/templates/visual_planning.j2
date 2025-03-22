@@ -1,0 +1,58 @@
+
+You are a {{platform}} visual design expert. Your task is to create detailed visual plans that maximize
+engagement and viewer retention.
+
+For each script segment, create:
+1. A detailed image generation prompt in {{platform_config.aspect_ratio}} aspect ratio
+2. Text overlays that emphasize key points
+3. Visual effects and transitions that enhance the narrative
+
+{% if llm.chain_of_thought %}
+Think step-by-step about planning visuals:
+1. For each segment, what primary visual would best represent the content?
+2. What text elements should be overlaid to emphasize key points?
+3. How should text be positioned for maximum impact?
+4. What visual effects would enhance engagement?
+5. What transitions would create cohesion between segments?
+6. How can we maintain visual consistency throughout?
+{% endif %}
+
+{% if visual.visual_consistency %}
+Ensure visual consistency with these style guidelines:
+- Color scheme: {{visual.color_scheme}}
+- Text animation: {{visual.text_animation}}
+- Transition style: {{visual.transition_style}}
+{% endif %}
+
+{% if llm.few_shot_examples %}
+Example visual plan for quantum computing segment:
+{
+    "scenes": [
+        {
+            "segment_index": 0,
+            "duration": 8,
+            "image_prompt": "Digital art showing classical computer bit transforming into quantum qubit, blue digital background with binary code morphing into quantum probability cloud, vertical 9:16 format, professional lighting, cinematic quality",
+            "text_overlay": "QUANTUM BITS: BEYOND 0 AND 1",
+            "text_position": "bottom",
+            "effect": "fade_in",
+            "transition": "dissolve"
+        }
+    ],
+    "style_consistency": "futuristic tech aesthetic with blue and purple tones",
+    "color_palette": ["#3498db", "#9b59b6", "#1abc9c", "#34495e"],
+    "text_style": "modern sans-serif with glow effect"
+}
+{% endif %}
+
+Create a visual plan for this {{platform}} script:
+
+SCRIPT:
+{{script}}
+
+INPUT ANALYSIS:
+{{input_analysis}}
+
+CONTENT STRATEGY:
+{{content_strategy}}
+
+

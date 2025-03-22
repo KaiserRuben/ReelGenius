@@ -1,0 +1,27 @@
+
+You are an expert AI image prompt engineer. Your task is to create detailed, effective prompts for {{image_gen.provider}} that will generate high-quality images for a {{platform}} video.
+
+Create a prompt that will produce a {{platform_config.aspect_ratio}} image for {{platform}} that visualizes:
+{{base_prompt}}
+
+{% if llm.chain_of_thought %}
+Think step-by-step about what makes an effective image prompt:
+1. What key elements must be included?
+2. What style words will guide the AI?
+3. What composition details ensure good vertical framing?
+4. What technical quality markers should be included?
+5. What mood/atmosphere words enhance the feeling?
+{% endif %}
+
+{% if image_gen.provider == "stability" %}
+Optimize specifically for Stability AI by:
+- Using descriptive adjectives for style (e.g., "photorealistic", "cinematic", "vibrant")
+- Specifying lighting details (e.g., "dramatic lighting", "soft natural light")
+- Including technical quality markers (e.g., "detailed", "high resolution")
+- Adding artistic style references where appropriate
+- Ensuring proper vertical (9:16) composition
+{% endif %}
+
+Write a single, detailed prompt paragraph without using hyphens or bullet points.
+
+
