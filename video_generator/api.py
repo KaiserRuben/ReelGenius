@@ -12,13 +12,14 @@ import uuid
 import asyncio
 from loguru import logger
 import traceback
-from pymongo import MongoClient
+from sqlalchemy.orm import Session as SQLAlchemySession
 from datetime import datetime, timedelta
 import imghdr
 import mimetypes
 
 from .config import PipelineConfig, PlatformType
 from .tasks import celery_app, generate_video
+from .database import get_session, Task
 
 app = FastAPI(title="AI Video Generator API")
 
@@ -34,12 +35,6 @@ app.add_middleware(
 # Initialize configuration
 config = PipelineConfig()
 
-# Configure MongoDB
-MONGODB_URL = os.environ.get('MONGODB_URL', 'mongodb://localhost:27017/videogen')
-mongo_client = MongoClient(MONGODB_URL)
-db = mongo_client['videogen']
-tasks_collection = db['tasks']
-
 # Ensure output directories exist
 output_dir = Path(__file__).parent.parent / "output"
 videos_dir = output_dir / "videos"
@@ -51,6 +46,15 @@ os.makedirs(temp_dir, exist_ok=True)
 
 # Task cleanup configuration
 TASK_RETENTION_PERIOD = int(os.environ.get("TASK_RETENTION_PERIOD", "86400"))  # Default 24 hours
+
+
+# Dependency to get the database session
+def get_db():
+    db = get_session()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 # Models
@@ -92,16 +96,24 @@ class VideoMetadata(BaseModel):
     metadata_path: Optional[str] = None
 
 
+class CacheStats(BaseModel):
+    """Statistics about semantic cache performance"""
+    hits: int = 0
+    misses: int = 0
+    money_saved: float = 0.0
+
 class TaskResult(BaseModel):
     """Enhanced task result with detailed media information"""
     video_path: Optional[str] = None
     metadata: Optional[VideoMetadata] = None
     execution_time: Optional[float] = None
     hook_audio_path: Optional[str] = None
+    hook_image_path: Optional[str] = None  # Added hook image path
     processed_scenes: Optional[List[SceneMediaInfo]] = None
     script: Optional[Dict[str, Any]] = None
     visual_plan: Optional[Dict[str, Any]] = None
     content_analysis: Optional[Dict[str, Any]] = None
+    cache_stats: Optional[CacheStats] = None
     
 
 class TaskStatusResponse(BaseModel):
@@ -119,33 +131,37 @@ class TaskStatusResponse(BaseModel):
 
 
 # Cleanup function
-async def cleanup_old_tasks():
-    """Clean up old tasks from MongoDB"""
+async def cleanup_old_tasks(db: SQLAlchemySession):
+    """Clean up old tasks from database"""
     cutoff_time = datetime.utcnow() - timedelta(seconds=TASK_RETENTION_PERIOD)
-    old_tasks = tasks_collection.find({"created_at": {"$lt": cutoff_time}})
+    
+    # Find old tasks
+    old_tasks = db.query(Task).filter(Task.created_at < cutoff_time).all()
 
     for task in old_tasks:
-        logger.info(f"Cleaning up old task: {task['task_id']}")
+        logger.info(f"Cleaning up old task: {task.task_id}")
 
         try:
             # Delete related files if they exist
-            if "result" in task and "video_path" in task["result"]:
-                video_path = task["result"]["video_path"]
+            if task.result and "video_path" in task.result:
+                video_path = task.result["video_path"]
                 if os.path.exists(video_path):
                     os.remove(video_path)
                     logger.info(f"Deleted video file: {video_path}")
 
             # Delete metadata if it exists
-            if "result" in task and "metadata" in task["result"] and "metadata_path" in task["result"]["metadata"]:
-                metadata_path = task["result"]["metadata"]["metadata_path"]
+            if task.result and "metadata" in task.result and "metadata_path" in task.result["metadata"]:
+                metadata_path = task.result["metadata"]["metadata_path"]
                 if os.path.exists(metadata_path):
                     os.remove(metadata_path)
                     logger.info(f"Deleted metadata file: {metadata_path}")
         except Exception as e:
-            logger.error(f"Error cleaning up files for task {task['task_id']}: {e}")
+            logger.error(f"Error cleaning up files for task {task.task_id}: {e}")
 
-        # Remove from MongoDB
-        tasks_collection.delete_one({"task_id": task["task_id"]})
+        # Remove from database
+        db.delete(task)
+    
+    db.commit()
 
 
 # Schedule periodic cleanup
@@ -159,7 +175,11 @@ async def periodic_cleanup():
     """Run cleanup periodically"""
     cleanup_interval = int(os.environ.get("TASK_CLEANUP_INTERVAL", "3600"))  # Default 1 hour
     while True:
-        await cleanup_old_tasks()
+        db = get_session()
+        try:
+            await cleanup_old_tasks(db)
+        finally:
+            db.close()
         await asyncio.sleep(cleanup_interval)
 
 
@@ -171,7 +191,7 @@ async def root():
 
 
 @app.post("/generate", response_model=VideoGenerationResponse)
-async def create_video(request: VideoGenerationRequest):
+async def create_video(request: VideoGenerationRequest, db: SQLAlchemySession = Depends(get_db)):
     """Generate a video from content."""
     try:
         # Validate input
@@ -181,23 +201,25 @@ async def create_video(request: VideoGenerationRequest):
         # Generate task ID
         task_id = str(uuid.uuid4())
 
-        # Store initial task info in MongoDB
-        tasks_collection.insert_one({
-            "task_id": task_id,
-            "status": "queued",
-            "progress": 0,
-            "created_at": datetime.utcnow(),
-            "platform": request.platform,
-            "voice_gender": request.voice_gender,
-            "content_summary": request.content[:100] + "..." if len(request.content) > 100 else request.content
-        })
+        # Create initial task in database
+        new_task = Task(
+            task_id=task_id,
+            status="queued",
+            progress=0,
+            created_at=datetime.utcnow(),
+            platform=request.platform,
+            voice_gender=request.voice_gender,
+            content_summary=request.content[:100] + "..." if len(request.content) > 100 else request.content
+        )
+        db.add(new_task)
+        db.commit()
 
         # Prepare config overrides
         overrides = request.config_overrides or {}
         
         # Set voice_id based on gender preference
         if request.voice_gender and request.voice_gender.lower() == "female":
-            overrides.update({"tts": {"voice_id": "tQ4MEZFJOzsahSEEZtHK"}})
+            overrides.update({"tts": {"voice_id": "Xb7hH8MSUJpSbSDYk0k2"}})
         else:  # default to male
             overrides.update({"tts": {"voice_id": "7fbQ7yJuEo56rYjrYaEh"}})
 
@@ -207,11 +229,11 @@ async def create_video(request: VideoGenerationRequest):
             task_id=task_id
         )
 
-        # Update MongoDB with Celery task ID
-        tasks_collection.update_one(
-            {"task_id": task_id},
-            {"$set": {"celery_task_id": celery_result.id}}
+        # Update database with Celery task ID
+        db.query(Task).filter_by(task_id=task_id).update(
+            {"celery_task_id": celery_result.id}
         )
+        db.commit()
 
         logger.info(f"Video generation task queued: {task_id}")
         return VideoGenerationResponse(
@@ -230,7 +252,8 @@ async def generate_video_from_file(
         file: UploadFile = File(...),
         platform: PlatformType = Form("tiktok"),
         voice_gender: str = Form("male"),
-        config_overrides: Optional[str] = Form(None)
+        config_overrides: Optional[str] = Form(None),
+        db: SQLAlchemySession = Depends(get_db)
 ):
     """Generate a video from an uploaded file."""
     # Save uploaded file temporarily
@@ -261,17 +284,19 @@ async def generate_video_from_file(
         # Generate task ID
         task_id = str(uuid.uuid4())
 
-        # Store initial task info in MongoDB
-        tasks_collection.insert_one({
-            "task_id": task_id,
-            "status": "queued",
-            "progress": 0,
-            "created_at": datetime.utcnow(),
-            "platform": platform,
-            "voice_gender": voice_gender,
-            "content_source": file.filename,
-            "content_summary": content[:100] + "..." if len(content) > 100 else content
-        })
+        # Store initial task info in database
+        new_task = Task(
+            task_id=task_id,
+            status="queued",
+            progress=0,
+            created_at=datetime.utcnow(),
+            platform=platform,
+            voice_gender=voice_gender,
+            content_source=file.filename,
+            content_summary=content[:100] + "..." if len(content) > 100 else content
+        )
+        db.add(new_task)
+        db.commit()
 
         # Process voice gender from the parameter
         if not overrides:
@@ -279,7 +304,7 @@ async def generate_video_from_file(
         
         # Set voice_id based on gender preference
         if voice_gender.lower() == "female":
-            overrides.update({"tts": {"voice_id": "tQ4MEZFJOzsahSEEZtHK"}})
+            overrides.update({"tts": {"voice_id": "Xb7hH8MSUJpSbSDYk0k2"}})
         else:  # default to male
             overrides.update({"tts": {"voice_id": "7fbQ7yJuEo56rYjrYaEh"}})
             
@@ -289,11 +314,11 @@ async def generate_video_from_file(
             task_id=task_id
         )
 
-        # Update MongoDB with Celery task ID
-        tasks_collection.update_one(
-            {"task_id": task_id},
-            {"$set": {"celery_task_id": celery_result.id}}
+        # Update database with Celery task ID
+        db.query(Task).filter_by(task_id=task_id).update(
+            {"celery_task_id": celery_result.id}
         )
+        db.commit()
 
         logger.info(f"Video generation task from file queued: {task_id}")
         return VideoGenerationResponse(
@@ -315,66 +340,57 @@ async def generate_video_from_file(
 
 
 @app.get("/status/{task_id}", response_model=TaskStatusResponse)
-async def get_task_status(task_id: str):
+async def get_task_status(task_id: str, db: SQLAlchemySession = Depends(get_db)):
     """Get the status of a video generation task."""
-    # First check MongoDB
-    task_info = tasks_collection.find_one({"task_id": task_id})
+    # First check database
+    task = db.query(Task).filter_by(task_id=task_id).first()
 
-    if not task_info:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    # Convert to dictionary for easier handling
+    task_info = task.to_dict()
+
     # If task has a Celery ID and isn't completed yet, check Celery for latest status
-    if "celery_task_id" in task_info and task_info["status"] not in ["completed", "failed"]:
+    if task.celery_task_id and task.status not in ["completed", "failed"]:
         try:
-            celery_task = celery_app.AsyncResult(task_info["celery_task_id"])
+            celery_task = celery_app.AsyncResult(task.celery_task_id)
 
             if celery_task.state == 'SUCCESS' and celery_task.result:
                 # Update from Celery result
                 result = celery_task.result
-                tasks_collection.update_one(
-                    {"task_id": task_id},
-                    {"$set": {
-                        "status": result.get("status", "completed"),
-                        "progress": result.get("progress", 1.0),
-                        "result": result.get("result", {}),
-                        "error": result.get("error"),
-                        "execution_time": result.get("execution_time"),
-                        "updated_at": datetime.utcnow()
-                    }}
-                )
-                # Refresh task info
-                task_info = tasks_collection.find_one({"task_id": task_id})
+                
+                # Update task in database
+                task.status = result.get("status", "completed")
+                task.progress = result.get("progress", 1.0)
+                task.result = result.get("result", {})
+                task.error = result.get("error")
+                task.execution_time = result.get("execution_time")
+                task.updated_at = datetime.utcnow()
+                
+                db.commit()
+                
+                # Refresh task_info
+                task_info = task.to_dict()
 
             elif celery_task.state == 'FAILURE':
                 # Update with failure info
-                tasks_collection.update_one(
-                    {"task_id": task_id},
-                    {"$set": {
-                        "status": "failed",
-                        "progress": 1.0,
-                        "error": str(celery_task.result),
-                        "updated_at": datetime.utcnow()
-                    }}
-                )
-                # Refresh task info
-                task_info = tasks_collection.find_one({"task_id": task_id})
+                task.status = "failed"
+                task.progress = 1.0
+                task.error = str(celery_task.result)
+                task.updated_at = datetime.utcnow()
+                
+                db.commit()
+                
+                # Refresh task_info
+                task_info = task.to_dict()
 
             # Pending and progress states are already updated by the task itself
 
         except Exception as e:
             logger.error(f"Error checking Celery task status: {e}")
-            # Continue with current MongoDB status
-
-    # Convert MongoDB ObjectId for proper JSON serialization
-    if "_id" in task_info:
-        del task_info["_id"]
-        
-    # Convert timestamps to float for serialization
-    if "created_at" in task_info and isinstance(task_info["created_at"], datetime):
-        task_info["created_at"] = task_info["created_at"].timestamp()
-    if "updated_at" in task_info and isinstance(task_info["updated_at"], datetime):
-        task_info["updated_at"] = task_info["updated_at"].timestamp()
-        
+            # Continue with current database status
+    
     # Format result data for enhanced response if available
     result_data = None
     if "result" in task_info and task_info["result"]:
@@ -425,16 +441,27 @@ async def get_task_status(task_id: str):
                 metadata_path=meta.get("metadata_path")
             )
         
+        # Check for cache statistics
+        cache_stats = None
+        if "cache_stats" in result:
+            cache_stats = CacheStats(
+                hits=result["cache_stats"].get("hits", 0),
+                misses=result["cache_stats"].get("misses", 0),
+                money_saved=result["cache_stats"].get("money_saved", 0.0)
+            )
+            
         # Create comprehensive result object
         result_data = TaskResult(
             video_path=result.get("video_path"),
             metadata=metadata,
             execution_time=result.get("execution_time") or task_info.get("execution_time"),
             hook_audio_path=result.get("hook_audio_path"),
+            hook_image_path=result.get("hook_image_path"),
             processed_scenes=processed_scenes if processed_scenes else None,
             script=result.get("script"),
             visual_plan=result.get("visual_plan"),
-            content_analysis=result.get("content_analysis")
+            content_analysis=result.get("content_analysis"),
+            cache_stats=cache_stats
         )
     
     # Create enhanced response
@@ -453,20 +480,20 @@ async def get_task_status(task_id: str):
 
 
 @app.get("/video/{task_id}")
-async def get_video(task_id: str):
+async def get_video(task_id: str, db: SQLAlchemySession = Depends(get_db)):
     """Get the generated video for a completed task."""
-    task_info = tasks_collection.find_one({"task_id": task_id})
+    task = db.query(Task).filter_by(task_id=task_id).first()
 
-    if not task_info:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    if task_info["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Task is not completed: {task_info['status']}")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Task is not completed: {task.status}")
 
-    if "result" not in task_info or "video_path" not in task_info["result"]:
+    if not task.result or "video_path" not in task.result:
         raise HTTPException(status_code=400, detail="Video path not found in task result")
 
-    video_path = task_info["result"]["video_path"]
+    video_path = task.result["video_path"]
 
     if not os.path.exists(video_path):
         raise HTTPException(status_code=404, detail="Video file not found")
@@ -479,21 +506,25 @@ async def get_video(task_id: str):
 
 
 @app.get("/metadata/{task_id}", response_model=Dict[str, Any])
-async def get_metadata(task_id: str, include_scene_data: bool = Query(False, description="Include detailed scene data")):
+async def get_metadata(
+    task_id: str, 
+    include_scene_data: bool = Query(False, description="Include detailed scene data"),
+    db: SQLAlchemySession = Depends(get_db)
+):
     """Get the metadata for a completed task with enhanced details."""
-    task_info = tasks_collection.find_one({"task_id": task_id})
+    task = db.query(Task).filter_by(task_id=task_id).first()
 
-    if not task_info:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    if task_info["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Task is not completed: {task_info['status']}")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Task is not completed: {task.status}")
 
-    if "result" not in task_info or "metadata" not in task_info["result"]:
+    if not task.result or "metadata" not in task.result:
         raise HTTPException(status_code=400, detail="Metadata not found in task result")
         
     # Get basic metadata
-    result = task_info["result"]
+    result = task.result
     metadata = result["metadata"]
     
     # Add additional information from result
@@ -510,6 +541,11 @@ async def get_metadata(task_id: str, include_scene_data: bool = Query(False, des
     
     # Add generation info
     enhanced_metadata["generation_time"] = result.get("execution_time")
+    
+    # Add cache statistics if available
+    if "cache_stats" in result:
+        enhanced_metadata["cache_stats"] = result["cache_stats"]
+        enhanced_metadata["money_saved"] = result["cache_stats"].get("money_saved", 0.0)
     
     # Add scene information if requested
     if include_scene_data and "processed_scenes" in result:
@@ -551,12 +587,18 @@ async def get_metadata(task_id: str, include_scene_data: bool = Query(False, des
     if "script" in result:
         enhanced_metadata["script"] = result["script"]
     
-    # Add hook audio if available
+    # Add hook assets if available
     if "hook_audio_path" in result and os.path.exists(result["hook_audio_path"]):
         enhanced_metadata["hook_audio_path"] = result["hook_audio_path"]
         enhanced_metadata["hook_audio_filename"] = os.path.basename(result["hook_audio_path"])
         enhanced_metadata["hook_audio_url"] = f"/api/media/audio/{task_id}/hook"
         enhanced_metadata["hook_audio_size_bytes"] = os.path.getsize(result["hook_audio_path"])
+        
+    if "hook_image_path" in result and os.path.exists(result["hook_image_path"]):
+        enhanced_metadata["hook_image_path"] = result["hook_image_path"]
+        enhanced_metadata["hook_image_filename"] = os.path.basename(result["hook_image_path"])
+        enhanced_metadata["hook_image_url"] = f"/api/media/image/{task_id}/hook"
+        enhanced_metadata["hook_image_size_bytes"] = os.path.getsize(result["hook_image_path"])
 
     return enhanced_metadata
 
@@ -568,60 +610,55 @@ async def list_tasks(
         limit: int = Query(10, description="Maximum number of tasks to return"),
         skip: int = Query(0, description="Number of tasks to skip"),
         include_details: bool = Query(False, description="Include additional task details"),
-        include_media_info: bool = Query(False, description="Include media file information")
+        include_media_info: bool = Query(False, description="Include media file information"),
+        db: SQLAlchemySession = Depends(get_db)
 ):
     """List all tasks with optional filtering, pagination, and enhanced information."""
     # Build query filter
-    query = {}
+    query = db.query(Task)
     if status:
-        query["status"] = status
+        query = query.filter(Task.status == status)
     if platform:
-        query["platform"] = platform
+        query = query.filter(Task.platform == platform)
 
     # Get total count
-    total_count = tasks_collection.count_documents(query)
+    total_count = query.count()
 
     # Get paginated tasks
-    tasks_cursor = tasks_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    tasks_query = query.order_by(Task.created_at.desc()).offset(skip).limit(limit)
+    tasks = tasks_query.all()
 
     # Convert to list and prepare response
     tasks_list = []
-    for task in tasks_cursor:
-        # Remove MongoDB ObjectId
-        if "_id" in task:
-            del task["_id"]
-
-        # Format timestamps for better readability
-        if "created_at" in task and isinstance(task["created_at"], datetime):
-            task["created_at"] = task["created_at"].timestamp()
-        if "updated_at" in task and isinstance(task["updated_at"], datetime):
-            task["updated_at"] = task["updated_at"].timestamp()
+    for task in tasks:
+        # Convert to dictionary
+        task_dict = task.to_dict()
             
         # Include enhanced task information if requested
-        if include_details and task.get("status") == "completed" and "result" in task:
-            result = task["result"]
+        if include_details and task.status == "completed" and task.result:
+            result = task.result
             
             # Add a summary of the video
-            task["summary"] = {
+            task_dict["summary"] = {
                 "duration": result.get("duration"),
                 "resolution": result.get("resolution"),
                 "scene_count": len(result.get("processed_scenes", [])),
                 "title": result.get("metadata", {}).get("title"),
-                "platform": task.get("platform")
+                "platform": task.platform
             }
             
             # Add execution metrics
-            task["metrics"] = {
-                "execution_time": result.get("execution_time") or task.get("execution_time"),
-                "start_time": task.get("created_at"),
-                "end_time": task.get("updated_at")
+            task_dict["metrics"] = {
+                "execution_time": result.get("execution_time") or task.execution_time,
+                "start_time": task_dict.get("created_at"),
+                "end_time": task_dict.get("updated_at")
             }
             
             # Add URLs for easy access to media
-            task["urls"] = {
-                "video": f"/video/{task['task_id']}",
-                "metadata": f"/metadata/{task['task_id']}",
-                "scenes": f"/scenes/{task['task_id']}"
+            task_dict["urls"] = {
+                "video": f"/video/{task.task_id}",
+                "metadata": f"/metadata/{task.task_id}",
+                "scenes": f"/scenes/{task.task_id}"
             }
             
             # Add media info if requested
@@ -648,21 +685,32 @@ async def list_tasks(
                 if "video_path" in result and os.path.exists(result["video_path"]):
                     media_info["video_size_bytes"] = os.path.getsize(result["video_path"])
                     
-                # Add hook audio if available
+                # Add hook assets if available
+                media_info["has_hook"] = False
+                
                 if "hook_audio_path" in result and os.path.exists(result["hook_audio_path"]):
                     media_info["has_hook_audio"] = True
+                    media_info["has_hook"] = True
                     media_info["audio_count"] += 1
                     media_info["total_audio_size_bytes"] += os.path.getsize(result["hook_audio_path"])
                 else:
                     media_info["has_hook_audio"] = False
                     
-                task["media_info"] = media_info
+                if "hook_image_path" in result and os.path.exists(result["hook_image_path"]):
+                    media_info["has_hook_image"] = True
+                    media_info["has_hook"] = True
+                    media_info["image_count"] += 1
+                    media_info["total_image_size_bytes"] += os.path.getsize(result["hook_image_path"])
+                else:
+                    media_info["has_hook_image"] = False
+                    
+                task_dict["media_info"] = media_info
             
             # Remove the full result to keep the response lighter
-            if "result" in task:
-                del task["result"]
+            if "result" in task_dict:
+                del task_dict["result"]
         
-        tasks_list.append(task)
+        tasks_list.append(task_dict)
 
     return {
         "tasks": tasks_list,
@@ -674,18 +722,18 @@ async def list_tasks(
 
 
 @app.delete("/task/{task_id}")
-async def delete_task(task_id: str):
+async def delete_task(task_id: str, db: SQLAlchemySession = Depends(get_db)):
     """Delete a task and its associated files."""
-    task_info = tasks_collection.find_one({"task_id": task_id})
+    task = db.query(Task).filter_by(task_id=task_id).first()
 
-    if not task_info:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     deleted_files = []
 
     # Try to delete video file if exists
-    if "result" in task_info and "video_path" in task_info["result"]:
-        video_path = task_info["result"]["video_path"]
+    if task.result and "video_path" in task.result:
+        video_path = task.result["video_path"]
         if os.path.exists(video_path):
             try:
                 os.remove(video_path)
@@ -694,9 +742,8 @@ async def delete_task(task_id: str):
                 logger.error(f"Error deleting video file: {e}")
 
     # Try to delete metadata file if exists
-    if "result" in task_info and "metadata" in task_info["result"] and "metadata_path" in task_info["result"][
-        "metadata"]:
-        metadata_path = task_info["result"]["metadata"]["metadata_path"]
+    if task.result and "metadata" in task.result and "metadata_path" in task.result["metadata"]:
+        metadata_path = task.result["metadata"]["metadata_path"]
         if os.path.exists(metadata_path):
             try:
                 os.remove(metadata_path)
@@ -705,15 +752,16 @@ async def delete_task(task_id: str):
                 logger.error(f"Error deleting metadata file: {e}")
 
     # Check if there's a running Celery task to revoke
-    if "celery_task_id" in task_info and task_info.get("status") in ["queued", "running"]:
+    if task.celery_task_id and task.status in ["queued", "running"]:
         try:
-            celery_app.control.revoke(task_info["celery_task_id"], terminate=True)
-            logger.info(f"Revoked Celery task: {task_info['celery_task_id']}")
+            celery_app.control.revoke(task.celery_task_id, terminate=True)
+            logger.info(f"Revoked Celery task: {task.celery_task_id}")
         except Exception as e:
             logger.error(f"Error revoking Celery task: {e}")
 
-    # Remove from MongoDB
-    tasks_collection.delete_one({"task_id": task_id})
+    # Remove from database
+    db.delete(task)
+    db.commit()
 
     return {
         "message": f"Task {task_id} deleted successfully",
@@ -730,7 +778,7 @@ async def list_platforms():
         "configs": PLATFORM_CONFIGS,
         "voice_options": {
             "male": "7fbQ7yJuEo56rYjrYaEh",
-            "female": "tQ4MEZFJOzsahSEEZtHK"
+            "female": "Xb7hH8MSUJpSbSDYk0k2"
         }
     }
 
@@ -755,30 +803,46 @@ async def get_config():
 
 
 @app.get("/media/image/{task_id}/{scene_index}")
-async def get_scene_image(task_id: str, scene_index: int):
-    """Get the image for a specific scene in a completed task."""
-    task_info = tasks_collection.find_one({"task_id": task_id})
+async def get_scene_image(task_id: str, scene_index: str, db: SQLAlchemySession = Depends(get_db)):
+    """Get the image for a specific scene or hook in a completed task."""
+    task = db.query(Task).filter_by(task_id=task_id).first()
 
-    if not task_info:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    if task_info["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Task is not completed: {task_info['status']}")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Task is not completed: {task.status}")
 
-    if "result" not in task_info or "processed_scenes" not in task_info["result"]:
+    result = task.result
+    if not result:
+        raise HTTPException(status_code=400, detail="Result data not found in task")
+    
+    # Check if requesting hook image
+    if scene_index.lower() == "hook":
+        if "hook_image_path" not in result or not os.path.exists(result["hook_image_path"]):
+            raise HTTPException(status_code=404, detail="Hook image not found")
+            
+        return FileResponse(
+            result["hook_image_path"],
+            media_type="image/jpeg",
+            filename=os.path.basename(result["hook_image_path"])
+        )
+    
+    # Else handle regular scene images
+    if "processed_scenes" not in result:
         raise HTTPException(status_code=400, detail="Scene data not found in task result")
         
-    scenes = task_info["result"]["processed_scenes"]
+    scenes = result["processed_scenes"]
     
     # Handle invalid scene index
     try:
-        scene_index = int(scene_index)
-        if scene_index < 0 or scene_index >= len(scenes):
-            raise HTTPException(status_code=404, detail=f"Scene index {scene_index} out of range")
+        scene_idx = int(scene_index)
+        if scene_idx < 0 or scene_idx >= len(scenes):
+            raise HTTPException(status_code=404, detail=f"Scene index {scene_idx} out of range")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid scene index")
         
-    scene = scenes[scene_index]
+    scene = scenes[scene_idx]
     
     if "image_path" not in scene or not os.path.exists(scene["image_path"]):
         raise HTTPException(status_code=404, detail="Image not found for this scene")
@@ -791,20 +855,20 @@ async def get_scene_image(task_id: str, scene_index: int):
 
 
 @app.get("/media/audio/{task_id}/{scene_index}")
-async def get_scene_audio(task_id: str, scene_index: str):
+async def get_scene_audio(task_id: str, scene_index: str, db: SQLAlchemySession = Depends(get_db)):
     """Get the audio for a specific scene or hook in a completed task."""
-    task_info = tasks_collection.find_one({"task_id": task_id})
+    task = db.query(Task).filter_by(task_id=task_id).first()
 
-    if not task_info:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    if task_info["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Task is not completed: {task_info['status']}")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Task is not completed: {task.status}")
 
-    if "result" not in task_info:
+    if not task.result:
         raise HTTPException(status_code=400, detail="Result data not found in task")
         
-    result = task_info["result"]
+    result = task.result
     
     # Check if requesting hook audio
     if scene_index.lower() == "hook":
@@ -844,20 +908,20 @@ async def get_scene_audio(task_id: str, scene_index: str):
 
 
 @app.get("/scenes/{task_id}")
-async def get_scenes(task_id: str):
+async def get_scenes(task_id: str, db: SQLAlchemySession = Depends(get_db)):
     """Get all scenes with media info for a completed task."""
-    task_info = tasks_collection.find_one({"task_id": task_id})
+    task = db.query(Task).filter_by(task_id=task_id).first()
 
-    if not task_info:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    if task_info["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Task is not completed: {task_info['status']}")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Task is not completed: {task.status}")
 
-    if "result" not in task_info or "processed_scenes" not in task_info["result"]:
+    if not task.result or "processed_scenes" not in task.result:
         raise HTTPException(status_code=400, detail="Scene data not found in task result")
         
-    scenes = task_info["result"]["processed_scenes"]
+    scenes = task.result["processed_scenes"]
     result = []
     
     # Build enhanced scene info
@@ -892,28 +956,82 @@ async def get_scenes(task_id: str):
         "scene_count": len(result),
         "scenes": result,
         # Add script if available
-        "script": task_info["result"].get("script")
+        "script": task.result.get("script")
     }
 
 
+@app.get("/cache/stats")
+async def cache_stats():
+    """Get statistics about the semantic cache."""
+    from video_generator.semantic_cache.cache import _cache_manager
+    
+    try:
+        # Get Redis info if available
+        redis_info = None
+        try:
+            redis_cache = _cache_manager.redis_cache
+            if hasattr(redis_cache, 'info'):
+                redis_info = redis_cache.info()
+        except Exception as e:
+            redis_info = {"error": str(e)}
+        
+        # Create summarized stats
+        stats = {
+            "status": "active",
+            "engine": "redis" if redis_info else "in-memory",
+            "embedding_model": _cache_manager.model.get_sentence_embedding_dimension(),
+            "embedding_cache_size": len(_cache_manager._embedding_cache),
+            "max_embedding_cache_size": _cache_manager._max_cache_size,
+            "redis_info": redis_info
+        }
+        
+        # Add usage info
+        tasks_data = []
+        if os.path.exists("cache_keys.csv"):
+            with open("cache_keys.csv", "r") as f:
+                lines = f.readlines()
+                if lines:
+                    stats["total_cache_entries"] = len(lines)
+                    # Get last 10 entries
+                    recent = lines[-10:] if len(lines) >= 10 else lines
+                    for line in recent:
+                        parts = line.strip().split(",", 4)
+                        if len(parts) >= 5:
+                            tasks_data.append({
+                                "timestamp": parts[0],
+                                "key_prefix": parts[1],
+                                "hash": parts[2],
+                                "similarity_enabled": parts[3].lower() == "true",
+                                "content": parts[4][:100] + "..." if len(parts[4]) > 100 else parts[4]
+                            })
+                    stats["recent_entries"] = tasks_data
+        
+        return stats
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @app.get("/health")
-async def health_check():
+async def health_check(db: SQLAlchemySession = Depends(get_db)):
     """Extended health check endpoint."""
     health_info = {
         "status": "healthy",
         "api_version": "1.0.0",
         "tasks": {
-            "total": tasks_collection.count_documents({}),
-            "running": tasks_collection.count_documents({"status": "running"}),
-            "queued": tasks_collection.count_documents({"status": "queued"}),
-            "completed": tasks_collection.count_documents({"status": "completed"}),
-            "failed": tasks_collection.count_documents({"status": "failed"})
+            "total": db.query(Task).count(),
+            "running": db.query(Task).filter_by(status="running").count(),
+            "queued": db.query(Task).filter_by(status="queued").count(),
+            "completed": db.query(Task).filter_by(status="completed").count(),
+            "failed": db.query(Task).filter_by(status="failed").count()
         },
         "config": {
             "platform": config.platform,
             "llm_model": config.llm.model,
             "image_provider": config.image_gen.provider,
             "tts_provider": config.tts.provider
+        },
+        "semantic_cache": {
+            "status": "enabled"
         }
     }
 
@@ -945,19 +1063,20 @@ async def health_check():
         health_info["redis_status"] = "error"
         health_info["redis_error"] = str(e)
 
-    # Check MongoDB connection
+    # Check PostgreSQL connection
     try:
-        mongo_client.admin.command('ping')
-        health_info["mongodb_status"] = "connected"
+        # Simply executing a query confirms connection
+        db.execute("SELECT 1")
+        health_info["postgres_status"] = "connected"
     except Exception as e:
-        health_info["mongodb_status"] = "error"
-        health_info["mongodb_error"] = str(e)
+        health_info["postgres_status"] = "error"
+        health_info["postgres_error"] = str(e)
 
     # Set overall status
     if (not api_keys_status or
             not storage_check or
             health_info.get("redis_status") != "connected" or
-            health_info.get("mongodb_status") != "connected"):
+            health_info.get("postgres_status") != "connected"):
         health_info["status"] = "degraded"
 
     return health_info

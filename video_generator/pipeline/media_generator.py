@@ -11,6 +11,7 @@ import traceback
 from PIL import Image
 
 from video_generator.config import PipelineConfig, OUTPUT_DIR
+from video_generator.semantic_cache.cache import cached, get_cached, set_cached
 
 
 class ImageGenerationCandidate:
@@ -34,6 +35,13 @@ class MediaGenerator:
 
         # Set reasonable timeouts for API requests
         self.api_timeout = int(os.environ.get("API_TIMEOUT", "30"))  # Default 30 seconds
+        
+        # Cache stats tracking
+        self.cache_stats = {
+            "hits": 0,
+            "misses": 0,
+            "money_saved": 0.0  # Estimated cost savings based on image generation API cost
+        }
 
     # Maintaining async interface for compatibility
     async def generate_image(self, prompt: str, index: int) -> List[str]:
@@ -52,6 +60,36 @@ class MediaGenerator:
         # Create a unique base filename
         prompt_hash = hashlib.md5(prompt.encode()).hexdigest()[:10]
         base_filename = f"image_{index}_{prompt_hash}"
+        
+        # Check semantic cache for similar prompts
+        cache_key = "image_generation"
+        found, cached_candidates = get_cached(
+            cache_key, 
+            args=(prompt, self.config.platform_config.aspect_ratio),
+            use_similarity=True,
+            similarity_threshold=0.85
+        )
+        
+        if found and cached_candidates:
+            # Validate that cached images exist
+            valid_candidates = []
+            for path in cached_candidates:
+                if os.path.exists(path):
+                    valid_candidates.append(path)
+            
+            if len(valid_candidates) > 0:
+                # Update cache statistics
+                self.cache_stats["hits"] += 1
+                # Each image costs approximately $0.20 with Stability AI SD3
+                cost_per_image = 0.20
+                self.cache_stats["money_saved"] += len(valid_candidates) * cost_per_image
+                
+                logger.info(f"CACHE HIT: Using {len(valid_candidates)} cached image candidates for scene {index} (semantic match)")
+                logger.info(f"CACHE STATS: Hits: {self.cache_stats['hits']}, Misses: {self.cache_stats['misses']}, Money saved: ${self.cache_stats['money_saved']:.2f}")
+                return valid_candidates[:candidates_count]
+            
+        # Cache miss tracking
+        self.cache_stats["misses"] += 1
 
         # Check if any candidates already exist
         existing_candidates = []
@@ -63,6 +101,14 @@ class MediaGenerator:
         # If we already have enough candidates, return them
         if len(existing_candidates) >= candidates_count:
             logger.info(f"Using {len(existing_candidates)} existing image candidates for scene {index}")
+            # Store in semantic cache for future similar prompts
+            set_cached(
+                cache_key, 
+                existing_candidates[:candidates_count], 
+                args=(prompt, self.config.platform_config.aspect_ratio),
+                expire_seconds=2592000,  # 30 days
+                use_similarity=True
+            )
             return existing_candidates[:candidates_count]
 
         # Generate new candidates
@@ -71,6 +117,15 @@ class MediaGenerator:
         if provider == "stability":
             try:
                 candidates = self._generate_stability_images(prompt, base_filename, candidates_count)
+                # Store in semantic cache for future similar prompts
+                if candidates:
+                    set_cached(
+                        cache_key, 
+                        candidates, 
+                        args=(prompt, self.config.platform_config.aspect_ratio),
+                        expire_seconds=2592000,  # 30 days
+                        use_similarity=True
+                    )
             except Exception as e:
                 logger.error(f"Error generating images with Stability: {str(e)}")
                 logger.error(traceback.format_exc())
@@ -114,9 +169,21 @@ class MediaGenerator:
         logger.info(f"Generated {len(candidates)} image candidates")
         return candidates
 
+    @cached("stability_image", expire_seconds=2592000, use_similarity=True, similarity_threshold=0.9)
     def _generate_single_stability_image(self, url, headers, prompt, output_path):
         """Generate a single image using Stability AI API."""
         try:
+            # Check if output file already exists (might be from a previous run)
+            if os.path.exists(output_path):
+                try:
+                    img = Image.open(output_path)
+                    img.verify()  # Verify it's a valid image
+                    logger.info(f"Using existing image at {output_path}")
+                    return output_path
+                except Exception:
+                    # Image exists but is invalid, proceed with generation
+                    pass
+            
             # Create multipart/form-data request
             files = {
                 'prompt': (None, prompt),
@@ -148,6 +215,7 @@ class MediaGenerator:
                     if retry_response.status_code == 200:
                         with open(output_path, "wb") as f:
                             f.write(retry_response.content)
+                        logger.info(f"Generated new image at {output_path} (after retry)")
                         return output_path
                     else:
                         logger.error(f"Stability API retry error: {retry_response.status_code} {retry_response.text}")
@@ -165,6 +233,7 @@ class MediaGenerator:
             try:
                 img = Image.open(output_path)
                 img.verify()  # Verify it's a valid image
+                logger.info(f"Generated new image at {output_path}")
                 return output_path
             except Exception as e:
                 logger.error(f"Generated invalid image: {e}")
@@ -244,27 +313,81 @@ class MediaGenerator:
             # Return all images with default score if evaluation fails
             return [ImageGenerationCandidate(path, 1.0) for path in image_paths]
 
-    # Generate hook voice
-    def _generate_hook_voice(self, state: Dict[str, Any]) -> Optional[str]:
-        """Generate voice audio for the hook."""
+    # Generate hook image and voice
+    def _generate_hook_assets(self, state: Dict[str, Any]) -> Dict[str, str]:
+        """Generate image and voice audio for the hook."""
+        result = {
+            "hook_audio_path": None,
+            "hook_image_path": None
+        }
+        
         if "script" not in state or "hook" not in state["script"]:
             logger.warning("No hook found in script")
-            return None
+            return result
 
         hook_text = state["script"]["hook"]
 
-        # Create a unique filename for hook audio
+        # Create a unique hash for the hook
         hook_hash = hashlib.md5(hook_text.encode()).hexdigest()[:10]
-        filename = f"hook_{hook_hash}.mp3"
-        output_path = os.path.join(self.output_dir, filename)
+        
+        # Generate hook audio
+        audio_filename = f"hook_{hook_hash}.mp3"
+        audio_output_path = os.path.join(self.output_dir, audio_filename)
 
         # Check if hook audio already exists
-        if os.path.exists(output_path):
-            logger.info(f"Hook audio already exists: {output_path}")
-            return output_path
-
-        # Generate hook audio using the same TTS provider as regular voice
-        return self._generate_voice_sync(hook_text, "hook")
+        if os.path.exists(audio_output_path):
+            logger.info(f"Hook audio already exists: {audio_output_path}")
+            result["hook_audio_path"] = audio_output_path
+        else:
+            # Generate hook audio using the same TTS provider as regular voice
+            result["hook_audio_path"] = self._generate_voice_sync(hook_text, "hook")
+        
+        # Generate hook image using specialized hook template
+        from ..models.llm import PromptTemplateManager
+        prompt_manager = PromptTemplateManager()
+        
+        # Get data from analysis to enhance hook image
+        content_type = state.get("input_analysis", {}).get("type", "informational")
+        primary_topics = state.get("input_analysis", {}).get("topics", ["general"])
+        target_audience = state.get("input_analysis", {}).get("target_audience", "general audience")
+        
+        # Prepare template data
+        hook_prompt_data = self.config.get_prompts_data()
+        hook_prompt_data.update({
+            "hook_text": hook_text,
+            "content_type": content_type,
+            "primary_topics": primary_topics,
+            "target_audience": target_audience
+        })
+        
+        try:
+            # Render specialized hook image prompt template
+            image_prompt = prompt_manager.render_template("hook_image_prompt", **hook_prompt_data)
+            logger.info(f"Generated specialized hook image prompt using template")
+        except Exception as e:
+            # Fallback to simple prompt if template fails
+            logger.error(f"Error using hook template: {e}. Using fallback prompt.")
+            image_prompt = f"Attention-grabbing visual for: '{hook_text}'. Bold, vibrant, eye-catching image that represents the hook statement. {self.config.platform_config.aspect_ratio} ratio. Very high quality, engaging and designed to stop scrolling."
+        
+        # Check for existing hook image
+        image_filename = f"hook_{hook_hash}.jpeg"
+        image_output_path = os.path.join(self.output_dir, image_filename)
+        
+        if os.path.exists(image_output_path):
+            logger.info(f"Hook image already exists: {image_output_path}")
+            result["hook_image_path"] = image_output_path
+        else:
+            # Generate image using our existing image generation pipeline
+            image_paths = self._generate_image_sync(image_prompt, "hook")
+            if image_paths:
+                # Select the best image
+                candidates = self._evaluate_images_sync(image_paths, image_prompt)
+                if candidates:
+                    result["hook_image_path"] = candidates[0].path
+                    logger.info(f"Generated new hook image: {result['hook_image_path']}")
+        
+        logger.info(f"Hook assets prepared: audio={result['hook_audio_path'] is not None}, image={result['hook_image_path'] is not None}")
+        return result
 
     # Maintaining async interface for compatibility
     async def generate_voice(self, text: str, index: int) -> Optional[str]:
@@ -433,6 +556,21 @@ class MediaGenerator:
         """Process all scenes in the visual plan."""
         return self._process_sync(state)
 
+    def get_cache_stats_report(self) -> str:
+        """Generate a report of cache statistics."""
+        total_requests = self.cache_stats["hits"] + self.cache_stats["misses"]
+        hit_rate = (self.cache_stats["hits"] / total_requests * 100) if total_requests > 0 else 0
+        
+        report = (
+            f"===== Semantic Cache Statistics =====\n"
+            f"Hits: {self.cache_stats['hits']}\n"
+            f"Misses: {self.cache_stats['misses']}\n"
+            f"Hit Rate: {hit_rate:.2f}%\n"
+            f"Estimated Money Saved: ${self.cache_stats['money_saved']:.2f}\n"
+            f"===================================="
+        )
+        return report
+
     # Synchronous implementation
     def _process_sync(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Synchronous implementation of processing all scenes."""
@@ -440,13 +578,12 @@ class MediaGenerator:
         script = state["script"]
         scenes = visual_plan["scenes"]
 
-        # Generate hook audio if available in script
-        hook_audio_path = None
+        # Generate hook assets (both image and audio) if available in script
+        hook_assets = {"hook_audio_path": None, "hook_image_path": None}
         if "hook" in script:
-            logger.info("Generating audio for hook...")
-            hook_audio_path = self._generate_hook_voice(state)
-            if hook_audio_path:
-                logger.info(f"Hook audio generated: {hook_audio_path}")
+            logger.info("Generating assets for hook...")
+            hook_assets = self._generate_hook_assets(state)
+            logger.info(f"Hook assets generated: audio={hook_assets['hook_audio_path'] is not None}, image={hook_assets['hook_image_path'] is not None}")
 
         # Process all scenes sequentially
         logger.info(f"Processing {len(scenes)} scenes...")
@@ -469,11 +606,17 @@ class MediaGenerator:
         if failures:
             logger.warning(f"{len(failures)} scenes failed to process")
 
+        # Log cache statistics
+        cache_stats_report = self.get_cache_stats_report()
+        logger.info(cache_stats_report)
+
         # Update state with processed scenes
         result = state.copy()
         result["processed_scenes"] = processed_scenes
-        result["hook_audio_path"] = hook_audio_path
+        result["hook_audio_path"] = hook_assets["hook_audio_path"]
+        result["hook_image_path"] = hook_assets["hook_image_path"]
         result["media_success"] = len(failures) < len(processed_scenes)  # Succeed if at least some scenes processed
+        result["cache_stats"] = self.cache_stats  # Include cache stats in the result
 
         return result
 
@@ -517,7 +660,7 @@ def main():
     config.tts = DummyConfig()
     config.tts.provider = "elevenlabs"
     config.tts.api_key = args.elevenlabs_key or os.environ.get("ELEVENLABS_API_KEY", "")
-    config.tts.voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "tQ4MEZFJOzsahSEEZtHK")
+    config.tts.voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "Xb7hH8MSUJpSbSDYk0k2")
     config.tts.model = "eleven_monolingual_v1"
     config.tts.voice_style = "natural"
     config.tts.speaking_rate = 1.0

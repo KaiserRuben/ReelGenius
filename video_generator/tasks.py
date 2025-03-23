@@ -4,18 +4,12 @@ import json
 from typing import Dict, Any, Optional
 import time
 import traceback
-from pymongo import MongoClient
 from datetime import datetime
 import uuid
 
 from .config import PipelineConfig, PlatformType
 from .pipeline.pipeline import VideoPipeline
-
-# Configure MongoDB
-MONGODB_URL = os.environ.get('MONGODB_URL', 'mongodb://localhost:27017/videogen')
-mongo_client = MongoClient(MONGODB_URL)
-db = mongo_client['videogen']
-tasks_collection = db['tasks']
+from .database import Session, Task
 
 # Configure Celery
 redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
@@ -34,13 +28,31 @@ celery_app.conf.worker_prefetch_multiplier = 1  # Process one task at a time
 
 # Progress reporting
 def update_task_status(task_id: str, updates: Dict[str, Any]):
-    """Update task status in MongoDB."""
-    updates['updated_at'] = datetime.utcnow()
-    tasks_collection.update_one(
-        {'task_id': task_id},
-        {'$set': updates},
-        upsert=True
-    )
+    """Update task status in PostgreSQL database."""
+    session = Session()
+    try:
+        updates['updated_at'] = datetime.utcnow()
+        
+        # Get task if it exists
+        task = session.query(Task).filter_by(task_id=task_id).first()
+        
+        if task:
+            # Update existing task
+            for key, value in updates.items():
+                setattr(task, key, value)
+        else:
+            # Create new task
+            updates['task_id'] = task_id
+            task = Task(**updates)
+            session.add(task)
+            
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Error updating task status: {e}")
+        traceback.print_exc()
+    finally:
+        session.close()
 
 
 @celery_app.task(bind=True)
@@ -48,7 +60,7 @@ def generate_video(self, task_id: str, content: str, platform: str,
                    config_overrides: Optional[Dict[str, Any]] = None):
     """Celery task to generate video."""
     try:
-        # Update progress in MongoDB
+        # Update progress in database
         update_task_status(task_id, {
             'progress': 0.1,
             'status': 'running',
@@ -145,7 +157,7 @@ def generate_video(self, task_id: str, content: str, platform: str,
         print(f"Task {task_id} failed: {e}")
         traceback.print_exc()
 
-        # Update status in MongoDB
+        # Update status in database
         update_task_status(task_id, {
             'status': 'failed',
             'error': str(e),

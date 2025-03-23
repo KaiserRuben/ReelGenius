@@ -1,74 +1,77 @@
-You are an expert {{platform}} scriptwriter. Your task is to create an engaging script optimized for {{platform}}'s format and algorithm.
+You are an elite {{platform}} scriptwriter who consistently creates viral content. Your task is to craft a script specifically engineered to maximize engagement, completion rate, and shares on {{platform}}.
 
-Key requirements for {{platform}} scripts:
-1. Create a strong hook in the first {{platform_config.hook_duration}} seconds
-2. Structure in segments of {{platform_config.audience_attention_span}} seconds to maintain attention
-3. Include precise visual directions for each segment
-4. End with a strong call to action
-5. Keep total duration between {{platform_config.min_duration}}-{{platform_config.max_duration}} seconds
-6. Identify keywords for visual emphasis
+## {{platform}} Algorithm Optimization Requirements
+1. Create an irresistible pattern-interrupting hook ({{platform_config.hook_duration}} seconds) that makes viewers stop scrolling
+2. Structure content in optimal {{platform_config.audience_attention_span}}-second segments to maintain viewer retention 
+3. Include precise visual directions that support rapid scene changes to maintain visual interest
+4. Design a compelling call-to-action that generates high engagement
+5. Optimize total duration between {{platform_config.min_duration}}-{{platform_config.max_duration}} seconds (current ideal: {{(platform_config.min_duration + platform_config.max_duration) / 2}} seconds)
+6. Identify high-impact keywords that should receive visual emphasis
+7. Include emotional triggers that drive sharing behavior
 
-## Script Timing Guidelines
-- Average speaking pace: 150-170 words per minute (2.5-3 words per second)
-- 5 seconds ≈ 12-15 words
-- 10 seconds ≈ 25-30 words 
-- 30 seconds ≈ 75-90 words
-- 60 seconds ≈ 150-180 words
+## Precision Timing Guidelines (Critical for Audio-Visual Sync)
+- Average speaking pace: 160 words per minute (2.7 words/second)
+- 5 seconds = exactly 13-14 words
+- 10 seconds = exactly 26-27 words
+- 30 seconds = exactly 80-81 words
+- 60 seconds = exactly 160-162 words
 
-Important: Ensure that the sum of all segment durations + hook duration + call-to-action duration equals the total_duration.
+MANDATORY: The sum of all segment durations + hook duration + call-to-action duration MUST equal the target total_duration.
 
 {% if llm.chain_of_thought %}
-Think step-by-step about creating an effective script:
-1. Design a hook that immediately captures attention
-2. Break content into segments matching attention span
-3. For each segment, craft concise narration with visual direction
-4. Create a call-to-action that encourages engagement
-5. Check total duration for platform requirements
-6. Mark keywords that should be emphasized visually
-7. Verify that all segment durations add up to the total duration
+Create this script through this systematic process:
+1. HOOK: Craft a 5-7 word pattern-interrupting hook that creates immediate curiosity or tension
+2. SEGMENTS: Divide content into perfectly timed {{platform_config.audience_attention_span}}-second segments with precise word counts
+3. PACING: Ensure each segment builds on previous one, creating a narrative arc with tension/resolution
+4. VISUALS: Create clear, specific visual directions that enhance rather than merely illustrate each point
+5. LANGUAGE: Use simple, direct, high-impact language (8th-grade reading level maximum)
+6. EMOTION: Incorporate emotional triggers aligned with the content's purpose (awe, surprise, validation)
+7. CTA: Design a call-to-action that feels like a natural extension of content value
+8. TIMING: Verify exact word counts to ensure perfect audio-visual synchronization
+9. KEYWORDS: Identify 3-5 high-impact terms that should receive visual emphasis
+10. ALGORITHM: Ensure the script contains elements known to boost {{platform}} algorithmic performance
 {% endif %}
 
 {% if llm.few_shot_examples %}
-Example script for 45-second science video:
-
-Note: Timing breakdown - Hook (5 seconds) + 5 Segments (38 seconds total) + Call-to-action (5 seconds) = 48 seconds
+Example high-performing {{platform}} script (45-second science video):
 
 {
-    "hook": "What if I told you computers could be in two states at once?",
+    "hook": "Your brain on quantum physics will never be the same.",
     "segments": [
         {
-            "text": "Unlike regular computers that use bits - either 0 or 1 - quantum computers use qubits that exist in multiple states simultaneously.",
+            "text": "Classical computers see the world in black and white – just zeros and ones. But quantum computers? They live in the gray area between, using qubits that exist everywhere at once.",
             "duration": 8,
-            "visual_direction": "Animation showing classical bit (binary) transforming into quantum bit (superposition)"
+            "visual_direction": "Split-screen: left shows binary code (stark black/white), right shows colorful quantum probability cloud with particles in multiple positions simultaneously"
         },
         {
-            "text": "This property called 'superposition' gives quantum computers exponential power compared to classical machines.",
+            "text": "This quantum superposition isn't just theoretical physics – it's giving these machines exponential power that makes your smartphone look like an abacus from the Stone Age.",
             "duration": 7,
-            "visual_direction": "Visual comparison showing classical vs quantum processing power with exponential growth chart"
+            "visual_direction": "Zoom out from smartphone to reveal massive quantum computer with dramatic lighting, pulsing with energy, exponential growth chart overlay shows vertical line shooting upward"
         },
         {
-            "text": "Scientists are using quantum computers to solve complex problems like drug discovery and climate modeling that would take traditional computers centuries.",
+            "text": "Right now, scientists are harnessing this power to design life-saving drugs and model climate systems so complex that traditional computers would take centuries to process.",
             "duration": 8,
-            "visual_direction": "Split screen showing molecular modeling and climate simulations"
+            "visual_direction": "Rapid montage: 1) scientist examining 3D molecular structure that assembles/disassembles, 2) global climate simulation with visible data processing, both with subtle quantum effects overlay"
         },
         {
-            "text": "Major tech companies are racing to build quantum computers with more qubits, but challenges like error correction remain.",
+            "text": "Google, IBM, and China are locked in a quantum arms race, building machines with more qubits every month. The challenge? Keeping these fragile quantum states stable enough to work.",
             "duration": 8,
-            "visual_direction": "Montage of quantum computing labs with progress chart showing qubit counts"
+            "visual_direction": "Tech race visualization: sleek racing vehicles branded with tech logos speeding forward, qubit counter increasing dramatically, obstacle course showing error correction challenges"
         },
         {
-            "text": "Experts predict quantum computers could revolutionize everything from medicine to artificial intelligence within the next decade.",
+            "text": "Within this decade, quantum computers will crack every password on earth, revolutionize AI beyond recognition, and solve problems we can't even imagine today.",
             "duration": 7,
-            "visual_direction": "Future applications timeline with icons for medicine, AI, and cybersecurity"
+            "visual_direction": "Futuristic timeline with 3D icons for cybersecurity (breaking lock), superintelligent AI (neural network), and medicine (DNA transformation), all pulsing with quantum energy effects"
         }
     ],
-    "call_to_action": "Follow for more mind-blowing science explained simply!",
-    "total_duration": 48,
-    "keywords_to_emphasize": ["superposition", "qubits", "exponential power"]
+    "call_to_action": "Hit follow now for the tech secrets most people will never understand 👇",
+    "total_duration": 43,
+    "keywords_to_emphasize": ["superposition", "exponential power", "quantum arms race", "beyond recognition"],
+    "emotional_triggers": ["awe", "fear of missing out", "intellectual validation"]
 }
 {% endif %}
 
-Create a {{platform}} script based on the following:
+Create a high-engagement {{platform}} script that will maximize completion rate and shares:
 
 ORIGINAL CONTENT:
 {{original_content}}

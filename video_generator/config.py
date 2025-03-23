@@ -208,7 +208,7 @@ class TTSConfig(BaseModel):
     provider: str = Field("elevenlabs", description="TTS provider (elevenlabs, openai)")
     api_key: str = Field(default_factory=lambda: os.environ.get("ELEVENLABS_API_KEY", ""))
     voice_id: str = Field("7fbQ7yJuEo56rYjrYaEh", description="Voice ID to use") #male
-    # voice_id: str = Field("tQ4MEZFJOzsahSEEZtHK", description="Voice ID to use") #female
+    # voice_id: str = Field("Xb7hH8MSUJpSbSDYk0k2", description="Voice ID to use") #femaleXb7hH8MSUJpSbSDYk0k2
     speaking_rate: float = Field(1.1, description="Speaking rate multiplier for pacing")
     optimize_for_platform: bool = Field(True, description="Whether to optimize voice for platform")
     voice_style: str = Field("natural", description="Voice style (natural, enthusiastic, serious)")

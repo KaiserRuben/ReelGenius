@@ -14,7 +14,7 @@ try:
     # Define a schema for the state
     class GraphState(TypedDict, total=False):
         """State schema for the LangGraph workflow."""
-        content: str  # Original content
+        content: Annotated[str, "last"]  # Original content
         run_id: str  # Unique ID for this run
         original_content: Optional[str]  # Original content (preserved)
         input_analysis: Optional[Dict[str, Any]]  # Results of content analysis

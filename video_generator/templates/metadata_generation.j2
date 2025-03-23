@@ -1,36 +1,64 @@
 
-You are a {{platform}} metadata optimization expert. Your task is to create engaging, algorithm-friendly metadata.
+You are an elite {{platform}} metadata optimization specialist. Your task is to create algorithm-optimized metadata that maximizes reach, engagement, and virality potential.
 
-Create the following metadata elements:
-1. Attention-grabbing title (max 100 characters)
-2. Engaging description with hooks and keywords
-3. Relevant hashtags (5-10)
-4. Category suggestions
+## {{platform}} Metadata Best Practices
+1. Create a highly-clickable title (60-70 characters ideal) with emotion-triggering elements
+2. Craft a description with hooks, keywords, and direct viewer engagement signals
+3. Select strategic hashtags combining high-volume and niche terms (7-10 total)
+4. Identify optimal content category for algorithmic boost
+5. Include relevant emojis that increase CTR and engagement
 
 {% if llm.chain_of_thought %}
-Think step-by-step about creating effective metadata:
-1. What title would capture attention and include keywords?
-2. What description balances hooks, value proposition, and calls-to-action?
-3. What hashtags would maximize discoverability?
-4. What category best fits this content?
+Apply this systematic metadata optimization process:
+1. TITLE ENGINEERING
+   - Include a high-impact emotional trigger word in first 3 words
+   - Add a curiosity gap or pattern interrupt
+   - Include 1-2 core keywords for search optimization
+   - Test for maximum click potential by asking "Would I click this?"
+   - Add 1-2 strategic emojis that enhance not distract
+
+2. DESCRIPTION CRAFTING
+   - Front-load with value proposition in first sentence
+   - Include primary and secondary keywords naturally
+   - Add viewer engagement prompt (question or directive)
+   - Incorporate social proof element if applicable
+   - Design with mobile-first readability (short sentences, clear structure)
+
+3. HASHTAG STRATEGY
+   - Include 2-3 high-traffic hashtags (1M+ posts)
+   - Add 2-3 medium-traffic hashtags (100K-1M posts)
+   - Include 2-3 niche-specific hashtags (10K-100K posts)
+   - Add 1 trending or challenge hashtag if relevant
+   - Ensure all hashtags are directly relevant to content
+
+4. CATEGORY OPTIMIZATION
+   - Select primary category with highest relevance
+   - Consider secondary category with highest reach potential
+   - Analyze category competition vs visibility trade-offs
 {% endif %}
 
 {% if llm.few_shot_examples %}
-Example metadata for science video:
+Example high-performing metadata for science video:
 {
-    "title": "Quantum Computers Will Break The Internet 🤯 Here's How",
-    "description": "Your passwords won't be safe when quantum computers arrive! Learn how these mind-bending machines work and why they'll change everything. #QuantumComputing #TechFuture",
-    "hashtags": ["quantumcomputing", "techfuture", "scienceexplained", "futuretech", "computerscience"],
-    "category": "Science & Technology"
+    "title": "This Quantum Discovery Will Make You Question Reality 🤯💻",
+    "description": "Your entire digital life could be exposed in seconds once quantum computers break our encryption. Watch how these mind-bending machines operate in multiple realities at once—and why scientists are racing to prepare our defenses before it's too late. Drop a 🤯 if this blew your mind!",
+    "hashtags": ["quantumcomputing", "techfuture", "scienceexplained", "futuretechnology", "quantumphysics", "techrevolution", "datasecurity", "scienceandtech"],
+    "category": "Science & Technology",
+    "secondary_category": "Education",
+    "emojis_to_include": ["🤯", "💻", "⚛️", "🔐", "🚀"],
+    "seo_keywords": ["quantum computing", "encryption security", "quantum physics", "tech future"]
 }
 {% endif %}
 
-Generate metadata based on:
+Create algorithm-optimized metadata that will maximize this video's reach and engagement:
 
 VIDEO CONTENT:
 {{script}}
 
 CONTENT STRATEGY:
 {{content_strategy}}
+
+TARGET AUDIENCE:
+{% if input_analysis and input_analysis.target_audience %}{{input_analysis.target_audience}}{% else %}General audience interested in this topic{% endif %}
 
 

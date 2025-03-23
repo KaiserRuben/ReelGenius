@@ -10,6 +10,7 @@ ReelGenius is an AI-powered video generation platform that transforms text conte
 - **Voice Customization**: Control voice style, speaking rate, and emphasis
 - **Asynchronous Processing**: Task queue system for efficient video generation
 - **Modern React UI**: Clean, responsive interface for video creation and management
+- **Semantic Caching**: Intelligent caching with semantic similarity for image generation to reduce API costs
 
 ## System Architecture
 
@@ -23,7 +24,7 @@ ReelGenius consists of three main components:
 
 - Python 3.10+
 - Node.js 18+
-- MongoDB
+- PostgreSQL
 - Redis
 - FFmpeg with AV1 support
 - Docker and Docker Compose (for containerized deployment)
@@ -133,6 +134,7 @@ The API is available at http://localhost:8000 when running the server. Documenta
 | `/platforms` | GET | List supported platforms and configurations |
 | `/tasks` | GET | List all generation tasks |
 | `/health` | GET | Check API health status |
+| `/cache/stats` | GET | Get semantic cache statistics |
 
 ## Configuration
 
@@ -151,6 +153,19 @@ The following configuration options can be set in the UI or through the API:
 - **Image Settings**: Style (photorealistic, 3D render, cartoon, etc.)
 - **AI Model Settings**: Meta-prompting, chain of thought, few-shot examples
 
+### Semantic Caching System
+
+ReelGenius implements a semantic caching system that dramatically reduces API costs for image generation:
+
+- **Similarity-Based Caching**: Uses embeddings to find similar previous prompts, avoiding redundant API calls
+- **Cost Reduction**: Tracks and reports money saved by reusing semantically similar content
+- **Configurable Thresholds**: Adjustable similarity thresholds to control cache hit rates
+- **Redis Integration**: Scalable performance with Redis backend (with in-memory fallback)
+- **Detailed Statistics**: Access cache performance metrics via the `/cache/stats` endpoint
+- **30-Day Persistence**: Cache entries expire after 30 days to maintain freshness
+
+The semantic cache stores embeddings of image generation prompts and retrieves cached results when similar prompts are encountered, significantly reducing the number of API calls to expensive image generation services.
+
 ## Development
 
 ### Project Structure
@@ -162,6 +177,7 @@ ReelGenius/
 │   ├── tasks.py           # Celery task definitions
 │   ├── config/            # Configuration
 │   ├── models/            # LLM, TTS, and image generation models
+│   ├── semantic_cache/    # Similarity-based caching system
 │   └── pipeline/          # Video generation pipeline
 ├── ui/
 │   └── reel_genius/       # Next.js frontend
@@ -184,10 +200,6 @@ Run frontend tests:
 cd ui/reel_genius
 npm test
 ```
-
-## License
-
-[MIT License](LICENSE)
 
 ## Acknowledgements
 

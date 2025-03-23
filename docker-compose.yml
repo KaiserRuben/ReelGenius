@@ -17,15 +17,15 @@ services:
       - LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
       # Redis configuration
       - REDIS_URL=redis://redis:6379/0
-      # MongoDB configuration
-      - MONGODB_URL=mongodb://mongodb:27017/videogen
+      # PostgreSQL configuration
+      - DATABASE_URL=postgresql://reelgenius:reelgenius@postgres:5432/videogen
     ports:
       - "8000:8000"
     networks:
       - reelgenius-network
     depends_on:
       - redis
-      - mongodb
+      - postgres
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -75,13 +75,13 @@ services:
       - LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
       # Redis configuration
       - REDIS_URL=redis://redis:6379/0
-      # MongoDB configuration
-      - MONGODB_URL=mongodb://mongodb:27017/videogen
+      # PostgreSQL configuration
+      - DATABASE_URL=postgresql://reelgenius:reelgenius@postgres:5432/videogen
     networks:
       - reelgenius-network
     depends_on:
       - redis
-      - mongodb
+      - postgres
 
   redis:
     container_name: reelgenius-redis
@@ -99,24 +99,28 @@ services:
       timeout: 5s
       retries: 5
 
-  mongodb:
-    container_name: reelgenius-mongodb
-    hostname: mongodb
-    image: mongo:latest
+  postgres:
+    container_name: reelgenius-postgres
+    hostname: postgres
+    image: postgres:latest
     volumes:
-      - mongodb_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "27017:27017"
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=reelgenius
+      - POSTGRES_PASSWORD=reelgenius
+      - POSTGRES_DB=videogen
     networks:
       - reelgenius-network
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "pg_isready -U reelgenius -d videogen"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  mongodb_data:
+  postgres_data:
   redis_data:
 
 networks:

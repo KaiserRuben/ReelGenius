@@ -251,6 +251,8 @@ class AnimatedSubtitle:
             'color': 'white',  # Keep white for best contrast
             'method': 'caption',
             'align': 'center',
+            'stroke_color': 'black',  # Add stroke for better contrast
+            'stroke_width': 1.5,      # Moderate stroke width
         }
 
         # Platform specific adjustments with larger fonts
@@ -258,13 +260,16 @@ class AnimatedSubtitle:
             # TikTok - bold text with strong contrast
             style['fontsize'] = 56  # Increased from 42
             style['color'] = '#FFFFFF'  # Pure white
+            style['stroke_width'] = 2.0  # Thicker stroke for TikTok
         elif self.platform == 'instagram_reels':
             # Instagram - clean, modern look
             style['fontsize'] = 52  # Increased from 40
             style['color'] = '#FFFFFF'
+            style['stroke_width'] = 1.8  # Medium stroke for Instagram
         elif self.platform == 'youtube_shorts':
             # YouTube - slightly more conservative
             style['fontsize'] = 48  # Increased from 36
+            style['stroke_width'] = 1.5  # Standard stroke for YouTube
 
         return style
 
@@ -281,20 +286,43 @@ class AnimatedSubtitle:
 
         # Create text clip with modern styling - NO background
         txt_clip = TextClip(
-            font=style['font'],
             text=text,
+            font=style['font'],
             font_size=style['fontsize'],
             color=style['color'],
-            stroke_color=style['stroke_color'],
-            stroke_width=int(style['stroke_width']),
             method=style['method'],
             text_align=style['align'],
             size=(text_width, None),
-            bg_color=None  # No background!
+            bg_color=None,  # No background!
+            stroke_color=style.get('stroke_color', 'black'),
+            stroke_width=style.get('stroke_width', 1.5)
         )
 
         # Set duration
         txt_clip = txt_clip.with_duration(duration)
+
+        # Add a semi-transparent background behind text for better readability
+        if self.config.platform in ['tiktok', 'instagram_reels']:
+            # Create a slightly larger background for text with padding
+            padding = 20  # Padding around text
+            bg_width = txt_clip.size[0] + padding * 2
+            bg_height = txt_clip.size[1] + padding * 2
+            
+            # Create background with black color
+            bg_clip = ColorClip(
+                size=(bg_width, bg_height), 
+                color=(0, 0, 0)  # Black color
+            )
+            
+            # Add opacity using set_opacity
+            bg_clip = bg_clip.with_opacity(0.4)  # 40% opacity
+            bg_clip = bg_clip.with_duration(duration)
+            
+            # Composite text on background
+            txt_clip = CompositeVideoClip([
+                bg_clip,
+                txt_clip.with_position('center')
+            ])
 
         # Apply animations
         animated_clip = self._apply_animation(txt_clip, animation_style, duration)
@@ -302,10 +330,10 @@ class AnimatedSubtitle:
         # Set position on the main video - position lower for better visibility
         if position == 'bottom':
             # Position subtitles closer to bottom for social media format
-            final_y = size[1] - txt_clip.size[1] - 80  # 80px from bottom
+            final_y = size[1] - animated_clip.size[1] - 100  # 100px from bottom for better visibility
             final_position = ('center', final_y)
         elif position == 'top':
-            final_position = ('center', 70)  # 70px from top
+            final_position = ('center', 80)  # 80px from top
         elif position == 'center':
             final_position = 'center'
         else:
@@ -465,27 +493,69 @@ class AnimatedSubtitle:
         if len(text) <= max_chars:
             return [text]
 
+        # For short-form videos, we want to break at logical points
+        # like sentence endings or commas where possible
         chunks = []
-        words = text.split()
+        
+        # First try to split by sentences
+        sentences = []
+        for sentence in text.replace('! ', '! SPLIT').replace('? ', '? SPLIT').replace('. ', '. SPLIT').split('SPLIT'):
+            sentences.append(sentence.strip())
+        
         current_chunk = []
         current_length = 0
-
-        for word in words:
-            # Check if adding this word exceeds max_chars
-            if current_length + len(word) + 1 <= max_chars:
-                current_chunk.append(word)
-                current_length += len(word) + 1  # +1 for space
-            else:
-                # This chunk is full, save it and start a new one
+        
+        # Process each sentence
+        for sentence in sentences:
+            # If sentence is short enough, add it to the current chunk
+            if current_length + len(sentence) + 1 <= max_chars:
+                current_chunk.append(sentence)
+                current_length += len(sentence) + 1  # +1 for space
+            elif len(sentence) > max_chars:
+                # If the sentence itself is too long, we need to split it by clauses
+                # First, add any accumulated chunks
                 if current_chunk:
                     chunks.append(' '.join(current_chunk))
-                current_chunk = [word]
-                current_length = len(word)
-
+                    current_chunk = []
+                    current_length = 0
+                
+                # Try to split by clauses (at commas, semicolons, etc.)
+                clauses = []
+                for clause in sentence.replace(', ', ', SPLIT').replace('; ', '; SPLIT').split('SPLIT'):
+                    clauses.append(clause.strip())
+                
+                for clause in clauses:
+                    if len(clause) <= max_chars:
+                        chunks.append(clause)
+                    else:
+                        # If clause is still too long, fall back to word splitting
+                        words = clause.split()
+                        clause_chunk = []
+                        clause_length = 0
+                        
+                        for word in words:
+                            if clause_length + len(word) + 1 <= max_chars:
+                                clause_chunk.append(word)
+                                clause_length += len(word) + 1
+                            else:
+                                if clause_chunk:
+                                    chunks.append(' '.join(clause_chunk))
+                                clause_chunk = [word]
+                                clause_length = len(word)
+                        
+                        if clause_chunk:
+                            chunks.append(' '.join(clause_chunk))
+            else:
+                # This sentence would make the chunk too long, save current chunk and start a new one
+                if current_chunk:
+                    chunks.append(' '.join(current_chunk))
+                current_chunk = [sentence]
+                current_length = len(sentence)
+        
         # Add the last chunk if any
         if current_chunk:
             chunks.append(' '.join(current_chunk))
-
+        
         return chunks
 
 
@@ -717,7 +787,16 @@ class VideoAssembler:
         width, height = video_clip.size
 
         # For short form content, chunk text for better readability
-        max_chars = 40 if self.platform in ['tiktok', 'instagram_reels'] else 50
+        # Use shorter text chunks for mobile-first platforms
+        if self.platform == 'tiktok':
+            max_chars = 35  # Very short for TikTok's fast pace
+        elif self.platform == 'instagram_reels':
+            max_chars = 38  # Slightly longer for Instagram
+        elif self.platform == 'youtube_shorts':
+            max_chars = 42  # Longer for YouTube
+        else:
+            max_chars = 50  # Default for other platforms
+            
         text_chunks = self.subtitle_generator.chunk_subtitles(text, max_chars)
 
         if not text_chunks:
@@ -821,8 +900,13 @@ class VideoAssembler:
                     # Precise hook duration based on audio
                     hook_duration = hook_audio.duration
 
-                    # Use first scene's image for hook background (or a default image)
-                    hook_image_path = valid_scenes[0]["image_path"] if valid_scenes else None
+                    # Use dedicated hook image if available, otherwise fall back to first scene's image
+                    hook_image_path = result.get("hook_image_path")
+                    if not hook_image_path or not os.path.exists(hook_image_path):
+                        hook_image_path = valid_scenes[0]["image_path"] if valid_scenes else None
+                        logger.info("Using first scene image for hook (dedicated hook image not found)")
+                    else:
+                        logger.info(f"Using dedicated hook image: {hook_image_path}")
 
                     if hook_image_path and os.path.exists(hook_image_path):
                         # Create image clip for hook
