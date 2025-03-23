@@ -39,17 +39,16 @@ class VisualPlanner:
         )
         self.prompt_manager = PromptTemplateManager()
     
-    def generate_visual_plan(self, script_data: Dict[str, Any]) -> VisualPlan:
+    def generate_visual_plan(self, state: Dict[str, Any]) -> VisualPlan:
         """Generate a visual plan for a video."""
-        script = script_data["script"]
-        processed_input = script_data["processed_input"]
+        script = state["script"]
         
         # Get prompt template
         prompt_data = self.config.get_prompts_data()
         prompt_data.update({
             "script": script,
-            "input_analysis": processed_input["input_analysis"],
-            "content_strategy": processed_input["content_strategy"]
+            "input_analysis": state["input_analysis"],
+            "content_strategy": state["content_strategy"]
         })
         
         prompt = self.prompt_manager.render_template("visual_planning", **prompt_data)
@@ -139,9 +138,9 @@ class VisualPlanner:
                 text_style="bold, readable font with drop shadow"
             )
     
-    def validate_visual_plan(self, visual_plan: VisualPlan, script_data: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_visual_plan(self, visual_plan: VisualPlan, state: Dict[str, Any]) -> Dict[str, Any]:
         """Validate the visual plan against the script."""
-        script = script_data["script"]
+        script = state["script"]
         
         # Basic validation
         script_segments = script["segments"]
@@ -182,22 +181,20 @@ class VisualPlanner:
             "issues": [],
             "visual_plan": visual_plan.model_dump()
         }
-    
-    def process(self, script_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Generate and validate visual plan for video."""
-        # Generate visual plan
+        # Generate visual plan using the state data
         logger.info("Generating visual plan...")
-        visual_plan = self.generate_visual_plan(script_data)
-        
+        visual_plan = self.generate_visual_plan(state)
+
         # Validate plan
         logger.info("Validating visual plan...")
-        validation = self.validate_visual_plan(visual_plan, script_data)
+        validation = self.validate_visual_plan(visual_plan, state)
+
+        # Update state with visual plan
+        result = state.copy()
+        result["visual_plan"] = validation["visual_plan"]
+        result["visual_validation"] = validation
         
-        # Return combined data
-        return {
-            "script_data": script_data,
-            "visual_plan": validation["visual_plan"],
-            "validation": validation
-        }
-
-
+        return result

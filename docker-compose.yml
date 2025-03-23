@@ -9,9 +9,55 @@ services:
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - STABILITY_API_KEY=${STABILITY_API_KEY}
       - PLATFORM=${PLATFORM:-tiktok}
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT:-https://eu.api.smith.langchain.com}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
+      # Redis configuration
+      - REDIS_URL=redis://redis:6379/0
+      # MongoDB configuration
+      - MONGODB_URL=mongodb://mongodb:27017/videogen
     ports:
       - "8000:8000"
-  
+    depends_on:
+      - redis
+      - mongodb
+
+  worker:
+    build: .
+    command: celery -A app.tasks worker --loglevel=info
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - STABILITY_API_KEY=${STABILITY_API_KEY}
+      - PLATFORM=${PLATFORM:-tiktok}
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT:-https://eu.api.smith.langchain.com}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
+      # Redis configuration
+      - REDIS_URL=redis://redis:6379/0
+      # MongoDB configuration
+      - MONGODB_URL=mongodb://mongodb:27017/videogen
+    depends_on:
+      - redis
+      - mongodb
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   mongodb:
     image: mongo:latest
     volumes:
@@ -26,3 +72,4 @@ services:
 
 volumes:
   mongodb_data:
+  redis_data:
