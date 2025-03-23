@@ -20,23 +20,24 @@ try:
         input_analysis: Optional[Dict[str, Any]]  # Results of content analysis
         is_duplicate: Optional[bool]  # Whether content is duplicate
         content_strategy: Optional[Dict[str, Any]]  # Content strategy
-        
+
         # Script generation data
         script: Optional[Dict[str, Any]]  # Generated script
         script_quality: Optional[Dict[str, Any]]  # Script quality check results
-        
+
         # Visual planning data
         visual_plan: Optional[Dict[str, Any]]  # Visual planning data
         visual_validation: Optional[Dict[str, Any]]  # Visual plan validation results
-        
+
         # Media generation data
         processed_scenes: Optional[List[Dict[str, Any]]]  # Processed media for scenes
         media_success: Optional[bool]  # Whether media generation succeeded
-        
+        hook_audio_path: Optional[str]  # Path to hook audio file
+
         # Final output data
         metadata: Optional[Dict[str, Any]]  # Generated metadata
         video_path: Optional[str]  # Path to the generated video
-        
+
         # Pipeline control and status
         success: Optional[bool]  # Whether the pipeline succeeded
         error: Optional[str]  # Error message if the pipeline failed
@@ -150,7 +151,7 @@ class VideoPipeline:
         try:
             # Get script quality directly from the state
             script_quality = state.get("script_quality", {})
-            
+
             if not script_quality.get("passes_quality_check", True):
                 # If we've already tried to regenerate, continue anyway
                 if state.get("regeneration_attempts", 0) >= self.config.max_retries:

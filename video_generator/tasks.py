@@ -102,14 +102,13 @@ def generate_video(self, task_id: str, content: str, platform: str,
         def progress_callback(progress_value):
             # Calculate overall progress (20% to 90%)
             overall_progress = 0.2 + (progress_value * 0.7)
-            update_task_status(task_id, {
+            # Create a copy of the progress data without the function itself
+            progress_data = {
                 'progress': overall_progress,
                 'status': 'running'
-            })
-            self.update_state(state='PROGRESS', meta={
-                'progress': overall_progress,
-                'status': 'running'
-            })
+            }
+            update_task_status(task_id, progress_data)
+            self.update_state(state='PROGRESS', meta=progress_data)
 
         # Run pipeline with progress callback
         result = task_pipeline.run(content, progress_callback=progress_callback)
@@ -119,6 +118,10 @@ def generate_video(self, task_id: str, content: str, platform: str,
         # Add execution time and platform to result
         result['execution_time'] = execution_time
         result['platform'] = platform
+        
+        # Remove progress_callback from result to avoid serialization issues
+        if 'progress_callback' in result:
+            del result['progress_callback']
 
         # Update task status
         final_status = {

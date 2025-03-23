@@ -44,7 +44,10 @@ class MediaGenerator:
     def _generate_image_sync(self, prompt: str, index: int) -> List[str]:
         """Synchronous implementation of image generation."""
         provider = self.config.image_gen.provider
-        candidates_count = self.config.image_gen.candidates_per_prompt
+
+        # Configurable candidates - default to 1 for simpler operation
+        # Can be overridden via config if multiple candidates are desired
+        candidates_count = getattr(self.config.image_gen, 'candidates_per_prompt', 1)
 
         # Create a unique base filename
         prompt_hash = hashlib.md5(prompt.encode()).hexdigest()[:10]
@@ -241,6 +244,28 @@ class MediaGenerator:
             # Return all images with default score if evaluation fails
             return [ImageGenerationCandidate(path, 1.0) for path in image_paths]
 
+    # Generate hook voice
+    def _generate_hook_voice(self, state: Dict[str, Any]) -> Optional[str]:
+        """Generate voice audio for the hook."""
+        if "script" not in state or "hook" not in state["script"]:
+            logger.warning("No hook found in script")
+            return None
+
+        hook_text = state["script"]["hook"]
+
+        # Create a unique filename for hook audio
+        hook_hash = hashlib.md5(hook_text.encode()).hexdigest()[:10]
+        filename = f"hook_{hook_hash}.mp3"
+        output_path = os.path.join(self.output_dir, filename)
+
+        # Check if hook audio already exists
+        if os.path.exists(output_path):
+            logger.info(f"Hook audio already exists: {output_path}")
+            return output_path
+
+        # Generate hook audio using the same TTS provider as regular voice
+        return self._generate_voice_sync(hook_text, "hook")
+
     # Maintaining async interface for compatibility
     async def generate_voice(self, text: str, index: int) -> Optional[str]:
         """Generate voice audio from text."""
@@ -385,6 +410,7 @@ class MediaGenerator:
                 "scene_index": index,
                 "image_path": selected_image,
                 "voice_path": voice_path,
+                "text": text,  # Always include the spoken text for subtitles
                 "text_overlay": scene.get("text_overlay"),
                 "text_position": scene.get("text_position", "center"),
                 "effect": scene.get("effect"),
@@ -414,6 +440,14 @@ class MediaGenerator:
         script = state["script"]
         scenes = visual_plan["scenes"]
 
+        # Generate hook audio if available in script
+        hook_audio_path = None
+        if "hook" in script:
+            logger.info("Generating audio for hook...")
+            hook_audio_path = self._generate_hook_voice(state)
+            if hook_audio_path:
+                logger.info(f"Hook audio generated: {hook_audio_path}")
+
         # Process all scenes sequentially
         logger.info(f"Processing {len(scenes)} scenes...")
 
@@ -427,6 +461,7 @@ class MediaGenerator:
 
             # Process scene
             scene_result = self._process_scene_sync(scene, segment_text, i)
+            time.sleep(5)
             processed_scenes.append(scene_result)
 
         # Check for any failures
@@ -437,6 +472,7 @@ class MediaGenerator:
         # Update state with processed scenes
         result = state.copy()
         result["processed_scenes"] = processed_scenes
+        result["hook_audio_path"] = hook_audio_path
         result["media_success"] = len(failures) < len(processed_scenes)  # Succeed if at least some scenes processed
 
         return result
@@ -451,7 +487,7 @@ def main():
 
     # Setup argument parser
     parser = argparse.ArgumentParser(description="Test MediaGenerator functionality")
-    parser.add_argument("--mode", type=str, choices=["image", "voice", "both"], default="both",
+    parser.add_argument("--mode", type=str, choices=["image", "voice", "both"], default="voice",
                         help="Test mode: image, voice, or both")
     parser.add_argument("--prompt", type=str, default="A beautiful sunset over mountains with a lake in the foreground",
                         help="Image prompt to test")
@@ -481,7 +517,7 @@ def main():
     config.tts = DummyConfig()
     config.tts.provider = "elevenlabs"
     config.tts.api_key = args.elevenlabs_key or os.environ.get("ELEVENLABS_API_KEY", "")
-    config.tts.voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+    config.tts.voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "tQ4MEZFJOzsahSEEZtHK")
     config.tts.model = "eleven_monolingual_v1"
     config.tts.voice_style = "natural"
     config.tts.speaking_rate = 1.0

@@ -540,6 +540,7 @@ class PromptTemplateManager:
         from pathlib import Path
         self.template_dir = Path(template_dir) if template_dir else Path(__file__).parent.parent / "templates"
         self.templates_cache = {}
+        self.timeout = DEFAULT_TIMEOUT
 
         # Create template directory if it doesn't exist
         os.makedirs(self.template_dir, exist_ok=True)

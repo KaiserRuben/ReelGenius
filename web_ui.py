@@ -228,7 +228,6 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
     # Image settings
     st.subheader("🖼️ Image Settings")
     image_style = st.selectbox("Image Style", ["photorealistic", "3d_render", "cartoon", "sketch", "painting"])
-    candidates_per_prompt = st.slider("Images Per Scene", min_value=1, max_value=5, value=3, step=1)
 
     # Model settings
     st.subheader("🧠 Model Settings")
@@ -356,7 +355,7 @@ with tab1:
         },
         "image_gen": {
             "style": image_style,
-            "candidates_per_prompt": candidates_per_prompt
+            "candidates_per_prompt": 1
         },
         "llm": {
             "use_meta_prompting": use_meta_prompting,

@@ -1,193 +1,528 @@
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 import os
 import tempfile
 import json
 import time
+import math
+import random
 from pathlib import Path
-
-import moviepy
-from langchain_core.messages import SystemMessage, HumanMessage
-from loguru import logger
 import traceback
 
-from moviepy import TextClip, concatenate_videoclips, CompositeAudioClip, ImageClip, CompositeVideoClip, AudioFileClip, \
-    concatenate_audioclips
+from moviepy.audio.fx import AudioFadeOut, AudioFadeIn
+# Import proper MoviePy modules as per v2.1.2 (avoid moviepy.editor)
+from moviepy.video.VideoClip import TextClip, ImageClip, ColorClip
+from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+from moviepy import concatenate_videoclips
+from moviepy.audio.AudioClip import CompositeAudioClip, concatenate_audioclips
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.fx import FadeIn, FadeOut
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from langchain_core.messages import SystemMessage, HumanMessage
+from loguru import logger
 
-# Check for MoviePy dependencies
-MOVIEPY_AVAILABLE = True
+# Try to import optional dependencies
 try:
-    from moviepy.video.fx.fadeout import fadeout
-    from moviepy.video.fx.fadein import fadein
+    from pydub import AudioSegment
 
-    FadeIn = fadein
-    FadeOut = fadeout
+    PYDUB_AVAILABLE = True
 except ImportError:
-    try:
-        from moviepy.video.fx.FadeIn import FadeIn
-        from moviepy.video.fx.FadeOut import FadeOut
-    except ImportError:
-        logger.warning("Could not import FadeIn/FadeOut effects. Using basic transitions.")
-
-
-        # Define simple alternatives
-        def FadeIn(clip, duration=1.0):
-            return clip.fx(lambda t: min(1, t / duration) if t < duration else 1)
-
-
-        def FadeOut(clip, duration=1.0):
-            return clip.fx(lambda gf, t: gf(t) * (1 - min(1, t / duration))
-            if t > clip.duration - duration else gf(t))
+    PYDUB_AVAILABLE = False
+    logger.warning("pydub not available. Audio normalization will be limited.")
 
 try:
-    # Try importing other effects that might be needed
-    from moviepy.video.fx.crossfadein import crossfadein as CrossFadeIn
-    from moviepy.video.fx.crossfadeout import crossfadeout as CrossFadeOut
-except ImportError:
-    try:
-        from moviepy.video.fx.CrossFadeIn import CrossFadeIn
-        from moviepy.video.fx.CrossFadeOut import CrossFadeOut
-    except ImportError:
-        logger.warning("Could not import CrossFadeIn/CrossFadeOut effects. Using basic transitions.")
-        # Define simple alternatives
-        CrossFadeIn = FadeIn
-        CrossFadeOut = FadeOut
+    from PIL import Image, ImageFilter, ImageEnhance
 
-# Conditionally import and check for PIL
-PIL_AVAILABLE = True
-try:
-    from PIL import Image, ImageFilter
+    PIL_AVAILABLE = True
 except ImportError:
-    logger.error("PIL (Pillow) not available. Image processing will be limited.")
     PIL_AVAILABLE = False
+    logger.warning("PIL (Pillow) not available. Image processing will be limited.")
+
+try:
+    import numpy as np
+
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    logger.warning("NumPy not available. Some effects will be limited.")
 
 from ..config import PipelineConfig, OUTPUT_DIR
 from ..models.llm import DeepSeekChatModel, PromptTemplateManager
 
 
-# Define a namespace for video and audio effects for easier transition and compatibility
-class vfx:
+# Define a namespace for video and audio effects with compatibility layers
+class VideoEffects:
+    """Modern video effects compatible with MoviePy 2.1.2"""
+
     @staticmethod
-    def FadeIn(clip, duration=1.0):
+    def fade_in(clip, duration=1.0):
         """Apply fade in effect with compatibility handling."""
-        if hasattr(clip, 'fadein'):
-            return clip.fadein(duration)
-        elif 'FadeIn' in dir(moviepy.video.fx):
-            return moviepy.video.fx.FadeIn(clip, duration)
-        else:
-            # Manual implementation as fallback
-            return clip.fx(lambda t: min(1, t / duration) if t < duration else 1)
+        return clip.with_effects([FadeIn(duration)])
 
     @staticmethod
-    def FadeOut(clip, duration=1.0):
+    def fade_out(clip, duration=1.0):
         """Apply fade out effect with compatibility handling."""
-        if hasattr(clip, 'fadeout'):
-            return clip.fadeout(duration)
-        elif 'FadeOut' in dir(moviepy.video.fx):
-            return moviepy.video.fx.FadeOut(clip, duration)
+        return clip.with_effects([FadeOut(duration)])
+
+    @staticmethod
+    def zoom_in(clip, duration=None, zoom_to=1.2):
+        """Apply zoom in effect"""
+        if duration is None:
+            duration = clip.duration / 2
+
+        def zoom_func(t):
+            progress = min(1, t / duration)
+            zoom_factor = 1 + (zoom_to - 1) * progress
+            return zoom_factor
+
+        return clip.resized(lambda t: zoom_func(t))
+
+    @staticmethod
+    def zoom_out(clip, duration=None, zoom_from=1.2):
+        """Apply zoom out effect"""
+        if duration is None:
+            duration = clip.duration / 2
+
+        def zoom_func(t):
+            progress = min(1, t / duration)
+            zoom_factor = zoom_from - (zoom_from - 1) * progress
+            return zoom_factor
+
+        return clip.resized(lambda t: zoom_func(t))
+
+    @staticmethod
+    def cross_fade(clip1, clip2, duration=0.5):
+        """Create a cross-fade transition between two clips"""
+        # Ensure the clips can be crossfaded
+        if duration > clip1.duration or duration > clip2.duration:
+            duration = min(clip1.duration, clip2.duration) / 2
+
+        # Apply fades
+        clip1_out = VideoEffects.fade_out(clip1.subclipped(0, clip1.duration), duration)
+        clip2_in = VideoEffects.fade_in(clip2, duration)
+
+        # Create the crossfade
+        crossfade = CompositeVideoClip([
+            clip1_out,
+            clip2_in.with_start(clip1.duration - duration)
+        ])
+
+        return crossfade
+
+    @staticmethod
+    def color_enhance(clip, saturation=1.2, contrast=1.1, brightness=1.0):
+        """Apply color enhancement to the clip using PIL"""
+        if not PIL_AVAILABLE or not NUMPY_AVAILABLE:
+            logger.warning("PIL or NumPy not available. Cannot apply color enhancement.")
+            return clip
+
+        def enhance_frame(get_frame, t):
+            frame = get_frame(t)
+
+            # Convert to PIL Image
+            img = Image.fromarray(frame)
+
+            # Apply enhancements
+            if brightness != 1.0:
+                img = ImageEnhance.Brightness(img).enhance(brightness)
+            if contrast != 1.0:
+                img = ImageEnhance.Contrast(img).enhance(contrast)
+            if saturation != 1.0:
+                img = ImageEnhance.Color(img).enhance(saturation)
+
+            # Convert back to numpy array
+            return np.array(img)
+
+        return clip.transform(enhance_frame)
+
+
+class AudioEffects:
+    """Modern audio effects compatible with MoviePy 2.1.2"""
+
+    @staticmethod
+    def audio_fade_in(clip, duration):
+        """Apply audio fade in"""
+        return clip.with_effects([AudioFadeIn(duration)])
+
+    @staticmethod
+    def audio_fade_out(clip, duration):
+        """Apply audio fade out"""
+        return clip.with_effects([AudioFadeOut(duration)])
+
+    @staticmethod
+    def normalize_audio(clip, target_dBFS=-14):
+        """Normalize audio to target loudness"""
+        if not PYDUB_AVAILABLE:
+            logger.warning("Pydub not available. Using simple audio normalization.")
+            return clip
+
+        # Export to temporary file for processing
+        temp_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+        temp_file.close()
+        temp_path = temp_file.name
+
+        try:
+            # Write audio to file
+            clip.write_audiofile(temp_path, logger=None)
+
+            # Process with pydub
+            audio = AudioSegment.from_file(temp_path)
+
+            # Calculate required gain adjustment
+            change = target_dBFS - audio.dBFS
+
+            # Only apply normalization if needed
+            if abs(change) > 0.5:
+                normalized_audio = audio.apply_gain(change)
+
+                # Export normalized audio
+                norm_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+                norm_file.close()
+                norm_path = norm_file.name
+
+                normalized_audio.export(norm_path, format="wav")
+
+                # Create new audio clip
+                new_clip = AudioFileClip(norm_path)
+
+                # Clean up
+                os.unlink(norm_path)
+
+                return new_clip
+
+            # No significant change needed
+            return clip
+
+        except Exception as e:
+            logger.error(f"Error normalizing audio: {e}")
+            return clip
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+
+class AnimatedSubtitle:
+    """Modern animated subtitle generator for short-form videos"""
+
+    ANIMATION_STYLES = {
+        "fade": "Simple fade in/out",
+        "pop": "Pop animation with slight scaling",
+        "typewriter": "Character-by-character reveal",
+        "slide": "Slide in from bottom",
+        "gradient": "Gradient text with sliding reveal"
+    }
+
+    def __init__(self, config: PipelineConfig):
+        """Initialize subtitle generator with platform config"""
+        self.config = config
+        self.platform = config.platform
+
+        # Set default style based on platform
+        if self.platform in ['tiktok', 'instagram_reels']:
+            # More dynamic style for these platforms
+            self.default_animation = 'pop'
+            self.fontsize = 42  # Larger for better visibility
+            self.stroke_width = 2.0  # Thicker outline instead of background
         else:
-            # Manual implementation as fallback
-            def fadeout_func(get_frame, t):
-                if t > clip.duration - duration:
-                    return get_frame(t) * (1 - (t - (clip.duration - duration)) / duration)
+            # More conservative for YouTube
+            self.default_animation = 'fade'
+            self.fontsize = 36
+            self.stroke_width = 1.5
+
+        # Check for local font in the fonts directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(script_dir)
+        font_path = os.path.join(project_root, "fonts", "Montserrat-VariableFont_wght.ttf")
+
+        # Fallback fonts if local font not available
+        self.font_options = ['Arial', 'Helvetica', 'DejaVuSans', 'Roboto']
+
+        # Use local font if available, otherwise try system fonts
+        if os.path.exists(font_path):
+            self.font = font_path
+            logger.info(f"Using local font: {font_path}")
+        else:
+            logger.warning(f"Local font not found at {font_path}, using system font")
+            self.font = self.font_options[0]  # Use first system font as fallback
+
+    def _get_platform_text_style(self):
+        """Get subtitle styling based on platform"""
+        # Base style for all platforms - modern approach
+        style = {
+            'font': self.font,
+            'fontsize': self.fontsize,
+            'color': 'white',
+            'stroke_color': 'black',
+            'stroke_width': self.stroke_width,
+            'method': 'caption',
+            'align': 'center',
+        }
+
+        # Platform specific adjustments
+        if self.platform == 'tiktok':
+            # TikTok - bold text with strong contrast
+            style['fontsize'] = 42
+            style['stroke_width'] = 2.0
+            style['color'] = '#FFFFFF'  # Pure white
+        elif self.platform == 'instagram_reels':
+            # Instagram - clean, modern look
+            style['fontsize'] = 40
+            style['stroke_width'] = 1.8
+            style['color'] = '#FFFFFF'
+        elif self.platform == 'youtube_shorts':
+            # YouTube - slightly more conservative
+            style['fontsize'] = 36
+            style['stroke_width'] = 1.5
+
+        return style
+
+    def create_subtitle_clip(self, text, duration, size, position='bottom', animation_style=None):
+        """Create an animated subtitle clip with modern styling"""
+        if not animation_style:
+            animation_style = self.default_animation
+
+        # Get styling for current platform
+        style = self._get_platform_text_style()
+
+        # Handle text size - subtract margins
+        text_width = size[0] - 100  # 50px margins on each side
+
+        # Create text clip with modern styling - NO background
+        txt_clip = TextClip(
+            font=style['font'],
+            text=text,
+            font_size=style['fontsize'],
+            color=style['color'],
+            stroke_color=style['stroke_color'],
+            stroke_width=int(style['stroke_width']),
+            method=style['method'],
+            text_align=style['align'],
+            size=(text_width, None),
+            bg_color=None  # No background!
+        )
+
+        # Set duration
+        txt_clip = txt_clip.with_duration(duration)
+
+        # Apply animations
+        animated_clip = self._apply_animation(txt_clip, animation_style, duration)
+
+        # Set position on the main video - position lower for better visibility
+        if position == 'bottom':
+            # Position subtitles closer to bottom for social media format
+            final_y = size[1] - txt_clip.size[1] - 80  # 80px from bottom
+            final_position = ('center', final_y)
+        elif position == 'top':
+            final_position = ('center', 70)  # 70px from top
+        elif position == 'center':
+            final_position = 'center'
+        else:
+            final_position = position
+
+        return animated_clip.with_position(final_position)
+
+    def _apply_animation(self, clip, style, duration):
+        """Apply animation to subtitle clip with modern effects"""
+        # Animation durations - quick and snappy for social media
+        anim_in_duration = min(0.25, duration * 0.15)
+        anim_out_duration = min(0.2, duration * 0.1)
+
+        # Apply different animations based on style
+        if style == 'fade':
+            # Simple fade in/out
+            clip = VideoEffects.fade_in(clip, anim_in_duration)
+            clip = VideoEffects.fade_out(clip, anim_out_duration)
+
+        elif style == 'pop':
+            # Scale animation with modern bouncy effect
+            def scale_func(t):
+                if t < anim_in_duration:
+                    # Pop in with slight bounce effect
+                    progress = t / anim_in_duration
+                    if progress < 0.7:
+                        return 0.5 + 0.5 * (progress / 0.7)
+                    else:
+                        return 1.0 + 0.08 * math.sin((progress - 0.7) * math.pi / 0.3)
+                elif t > duration - anim_out_duration:
+                    # Pop out - simple scale down
+                    progress = (t - (duration - anim_out_duration)) / anim_out_duration
+                    return 1.0 - 0.3 * progress
                 else:
-                    return get_frame(t)
+                    return 1.0
 
-            return clip.fx(fadeout_func)
+            # Apply scale animation
+            clip = clip.resized(lambda t: scale_func(t))
+            # Also add fade for smoothness
+            clip = VideoEffects.fade_in(clip, anim_in_duration / 2)
+            clip = VideoEffects.fade_out(clip, anim_out_duration)
 
-    @staticmethod
-    def CrossFadeIn(clip, duration=1.0):
-        """Apply cross-fade in effect with compatibility handling."""
-        try:
-            if 'crossfadein' in dir(moviepy.video.fx):
-                return moviepy.video.fx.crossfadein(clip, duration)
-            elif 'CrossFadeIn' in dir(moviepy.video.fx):
-                return moviepy.video.fx.CrossFadeIn(clip, duration)
+        elif style == 'slide':
+            # Slide from bottom with easing
+            def slide_pos(t):
+                if t < anim_in_duration:
+                    # Slide in from bottom with ease out
+                    progress = t / anim_in_duration
+                    eased_progress = 1 - (1 - progress) ** 2.5  # Stronger ease out
+                    offset = (1 - eased_progress) * 120  # Start 120px below
+                    return ('center', offset)
+                elif t > duration - anim_out_duration:
+                    # Slide out to bottom with ease in
+                    progress = (t - (duration - anim_out_duration)) / anim_out_duration
+                    eased_progress = progress ** 2  # Ease in quad
+                    offset = eased_progress * 100  # End 100px below
+                    return ('center', offset)
+                else:
+                    return ('center', 0)  # Stay in place
+
+            # Create a container clip with the right dimensions for the sliding effect
+            container_h = clip.h + 120  # Make room for the slide
+            container = ColorClip((clip.w, container_h), color=(0, 0, 0, 0))
+            container = container.with_duration(duration)
+
+            # Add the sliding subtitle to the container
+            sliding_clip = CompositeVideoClip([
+                container,
+                clip.with_position(slide_pos)
+            ])
+
+            # Also add fade for smoothness
+            sliding_clip = VideoEffects.fade_in(sliding_clip, anim_in_duration / 3)
+            sliding_clip = VideoEffects.fade_out(sliding_clip, anim_out_duration / 2)
+
+            return sliding_clip
+
+        elif style == 'typewriter':
+            # Modern typewriter effect
+            def typewriter_crop(t):
+                if t < anim_in_duration:
+                    progress = t / anim_in_duration
+                    # Ease out for more natural typing feel
+                    eased_progress = 1 - (1 - progress) ** 2
+                    width = int(clip.w * eased_progress)
+                    x1 = 0
+                    y1 = 0
+                    x2 = width
+                    y2 = clip.h
+                    return (x1, y1, x2, y2)
+                return (0, 0, clip.w, clip.h)
+
+            # Create typewriter effect
+            clip = clip.crop(typewriter_crop)
+
+            # Add fade out
+            clip = VideoEffects.fade_out(clip, anim_out_duration)
+
+        elif style == 'gradient':
+            # New modern gradient style with reveal
+            def gradient_mask(t):
+                if t < anim_in_duration:
+                    progress = t / anim_in_duration
+                    eased_progress = 1 - (1 - progress) ** 2
+
+                    # Create a gradient mask effect
+                    width = clip.w
+                    height = clip.h
+                    mask = np.zeros((height, width), dtype=np.uint8)
+
+                    # Calculate gradient width
+                    reveal_width = int(width * eased_progress)
+                    gradient_width = min(int(width * 0.2), 30)  # 20% width or 30px max
+
+                    # Fill the revealed part
+                    if reveal_width > 0:
+                        mask[:, :reveal_width] = 255
+
+                    # Create gradient at the edge
+                    if reveal_width < width:
+                        gradient_end = min(reveal_width + gradient_width, width)
+                        gradient_range = gradient_end - reveal_width
+                        if gradient_range > 0:
+                            for x in range(reveal_width, gradient_end):
+                                alpha = 255 * (1 - (x - reveal_width) / gradient_range)
+                                mask[:, x] = alpha
+
+                    return mask
+                else:
+                    # Full visibility after animation
+                    return np.ones((clip.h, clip.w), dtype=np.uint8) * 255
+
+            # Add gradient reveal effect with image clip
+            # Simplified implementation without actual image processing since it requires numpy
+            # Just use fade for simplicity when numpy isn't available
+            if NUMPY_AVAILABLE:
+                clip = clip.with_mask(lambda t: gradient_mask(t))
             else:
-                # Fall back to regular fade in if cross fade not available
-                return vfx.FadeIn(clip, duration)
-        except Exception as e:
-            logger.error(f"Error applying CrossFadeIn: {e}")
-            return clip  # Return original clip on error
+                clip = VideoEffects.fade_in(clip, anim_in_duration)
 
-    @staticmethod
-    def CrossFadeOut(clip, duration=1.0):
-        """Apply cross fade out effect with compatibility handling."""
-        try:
-            if 'crossfadeout' in dir(moviepy.video.fx):
-                return moviepy.video.fx.crossfadeout(clip, duration)
-            elif 'CrossFadeOut' in dir(moviepy.video.fx):
-                return moviepy.video.fx.CrossFadeOut(clip, duration)
+            # Add fade out
+            clip = VideoEffects.fade_out(clip, anim_out_duration)
+
+        return clip
+
+    def chunk_subtitles(self, text, max_chars=50):
+        """Split long text into smaller chunks for better readability
+
+        Args:
+            text: The full subtitle text
+            max_chars: Maximum characters per chunk
+
+        Returns:
+            List of text chunks
+        """
+        # If text is short enough, return as is
+        if len(text) <= max_chars:
+            return [text]
+
+        chunks = []
+        words = text.split()
+        current_chunk = []
+        current_length = 0
+
+        for word in words:
+            # Check if adding this word exceeds max_chars
+            if current_length + len(word) + 1 <= max_chars:
+                current_chunk.append(word)
+                current_length += len(word) + 1  # +1 for space
             else:
-                # Fall back to regular fade out if cross fade not available
-                return vfx.FadeOut(clip, duration)
-        except Exception as e:
-            logger.error(f"Error applying CrossFadeOut: {e}")
-            return clip  # Return original clip on error
+                # This chunk is full, save it and start a new one
+                if current_chunk:
+                    chunks.append(' '.join(current_chunk))
+                current_chunk = [word]
+                current_length = len(word)
 
-    @staticmethod
-    def MultiplySpeed(clip, factor):
-        """Apply speed changes to the clip"""
-        if hasattr(clip, 'speedx'):
-            return clip.speedx(factor)
-        else:
-            return clip.fx(lambda c: c.set_duration(c.duration / factor))
+        # Add the last chunk if any
+        if current_chunk:
+            chunks.append(' '.join(current_chunk))
 
-
-class afx:
-    @staticmethod
-    def AudioFadeIn(clip, duration):
-        """Create a audio fade in effect"""
-        if hasattr(clip, 'audio_fadein'):
-            return clip.audio_fadein(duration)
-        else:
-            return clip.volumex(lambda t: min(t / duration, 1) if duration > 0 else 1)
-
-    @staticmethod
-    def AudioFadeOut(clip, duration):
-        """Create a audio fade out effect"""
-        if hasattr(clip, 'audio_fadeout'):
-            return clip.audio_fadeout(duration)
-        else:
-            return clip.volumex(lambda t: max(0, 1 - t / duration) if duration > 0 and t <= clip.duration else 1)
+        return chunks
 
 
 class VideoAssembler:
-    """Assemble final video from media assets."""
+    """Enhanced video assembler with modern effects and subtitles"""
 
     def __init__(self, config: PipelineConfig):
         self.config = config
         self.output_dir = os.path.join(OUTPUT_DIR, "videos")
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # Check if MoviePy is available
-        if not MOVIEPY_AVAILABLE:
-            logger.error("MoviePy is not available. Video assembly will not work.")
-            self.moviepy_available = False
-        else:
-            self.moviepy_available = True
+        # Initialize subtitle generator
+        self.subtitle_generator = AnimatedSubtitle(config)
 
-        # Font settings based on platform
-        self.font = "Helvetica"  # Default font
-        self.fontsize = 40
-        self.text_color = 'white'
-        self.text_bg_color = (0, 0, 0, 170)  # Black with alpha
+        # Set platform specific settings
+        self.platform = config.platform
+        self.platform_config = config.platform_config
+        self.visual_config = config.visual
 
-        # Try to find a suitable font if Helvetica is not available
-        try:
-            from moviepy.video.tools.drawing import findFont
-            available_font = findFont('Helvetica')
-            if available_font:
-                self.font = available_font
-            else:
-                # Try other common fonts
-                for font_name in ['Arial', 'DejaVuSans', 'FreeSans', 'Liberation']:
-                    available_font = findFont(font_name)
-                    if available_font:
-                        self.font = available_font
-                        break
-        except:
-            # If finding fonts fails, we'll use the default
-            pass
+        # Visual settings
+        if self.visual_config.color_scheme == 'vibrant':
+            self.color_saturation = 1.2
+            self.color_contrast = 1.1
+        elif self.visual_config.color_scheme == 'muted':
+            self.color_saturation = 0.9
+            self.color_contrast = 1.0
+        else:  # professional or default
+            self.color_saturation = 1.0
+            self.color_contrast = 1.05
 
         # Initialize LLM for metadata generation
         self.llm = DeepSeekChatModel(
@@ -200,157 +535,247 @@ class VideoAssembler:
         )
         self.prompt_manager = PromptTemplateManager()
 
-    def _create_text_overlay(self, text: str, position: str, duration: int, size) -> Any:
-        """Create a text overlay for a scene."""
-        if not self.moviepy_available:
-            logger.error("MoviePy is not available. Cannot create text overlay.")
+    def _apply_visual_effects(self, clip, scene_index, total_scenes):
+        """Apply platform-optimized visual effects to the clip
+
+        Args:
+            clip: Video clip to enhance
+            scene_index: Current scene index (for varied effects)
+            total_scenes: Total number of scenes
+
+        Returns:
+            Enhanced clip
+        """
+        # Skip effects for very short clips
+        if not clip.duration:
+            return clip
+        if clip.duration < 1.0:
+            return clip
+
+        # Apply platform and mood specific effects
+        if self.platform in ['tiktok', 'instagram_reels']:
+            # More dynamic effects for these platforms
+            if self.visual_config.motion_effects:
+                # Apply different effects based on scene position
+                if scene_index == 0:
+                    # First scene - zoom in or pan effect
+                    clip = VideoEffects.zoom_in(clip, clip.duration / 2, zoom_to=1.1)
+                elif scene_index == total_scenes - 1:
+                    # Last scene - subtle zoom out
+                    clip = VideoEffects.zoom_out(clip, clip.duration / 2, zoom_from=1.1)
+                else:
+                    # Middle scenes - alternate between effects
+                    if scene_index % 3 == 0:
+                        # Zoom in
+                        clip = VideoEffects.zoom_in(clip, clip.duration, zoom_to=1.08)
+                    elif scene_index % 3 == 1:
+                        # Zoom out
+                        clip = VideoEffects.zoom_out(clip, clip.duration, zoom_from=1.08)
+
+            # Apply color enhancements
+            if self.visual_config.apply_filters:
+                clip = VideoEffects.color_enhance(
+                    clip,
+                    saturation=self.color_saturation,
+                    contrast=self.color_contrast
+                )
+
+        else:  # youtube_shorts or general
+            # More subtle effects
+            if self.visual_config.motion_effects:
+                # Apply subtle zoom for longer scenes
+                if clip.duration > 3.0:
+                    zoom_amount = 1.05  # Very subtle
+                    clip = VideoEffects.zoom_in(clip, clip.duration, zoom_to=zoom_amount)
+
+            # Apply more moderate color enhancements
+            if self.visual_config.apply_filters:
+                clip = VideoEffects.color_enhance(
+                    clip,
+                    saturation=self.color_saturation * 0.9,  # More subtle
+                    contrast=self.color_contrast
+                )
+
+        return clip
+
+    def _apply_transition(self, clip1, clip2, transition_type, duration=0.5):
+        """Apply transition effect between clips with improved timing safety
+
+        Args:
+            clip1: First clip
+            clip2: Second clip
+            transition_type: Type of transition
+            duration: Transition duration
+
+        Returns:
+            Combined clip with transition
+        """
+        # Default to crossfade for very short clips with safer duration
+        if clip1.duration < duration * 2 or clip2.duration < duration * 2:
+            duration = min(min(clip1.duration, clip2.duration) / 5, 0.3)  # Max 300ms, 1/5 of shortest clip
+            transition_type = "fade"
+
+        # Define a tiny gap between clips (in seconds)
+        gap_duration = 0.05  # 50ms gap
+
+        # Apply transition
+        if transition_type == "fade" or transition_type == "crossfade":
+            # Apply fade out to clip1
+            clip1_faded = VideoEffects.fade_out(clip1, duration)
+
+            # Apply fade in to clip2
+            clip2_faded = VideoEffects.fade_in(clip2, duration)
+
+            # Position clips with a gap instead of overlap
+            clip2_start = clip1.duration + gap_duration
+
+            # Create composite with explicit timing to ensure gap
+            transition = CompositeVideoClip([
+                clip1_faded,
+                clip2_faded.with_start(clip2_start)
+            ], size=clip1.size)
+
+            # Handle audio separately with gap
+            if hasattr(clip1, 'audio') and clip1.audio and hasattr(clip2, 'audio') and clip2.audio:
+                try:
+                    # Apply audio fades
+                    audio1 = clip1.audio
+                    audio2 = clip2.audio
+
+                    # Only apply fade out if audio1 is long enough
+                    if audio1.duration > duration * 2:
+                        audio1 = AudioEffects.audio_fade_out(audio1, duration)
+
+                    # Apply fade in to audio2
+                    audio2 = AudioEffects.audio_fade_in(audio2, duration)
+
+                    # Create composite audio with explicit timing to ensure gap
+                    combined_audio = CompositeAudioClip([
+                        audio1,
+                        audio2.with_start(clip2_start)
+                    ])
+
+                    # Set audio on transition
+                    transition = transition.with_audio(combined_audio)
+                except Exception as e:
+                    logger.warning(f"Audio transition failed, falling back to simple audio: {e}")
+                    # If audio transition fails, keep the video transition but use simpler audio
+                    if clip2.audio:
+                        transition = transition.with_audio(clip2.audio)
+
+            return transition
+
+        elif transition_type == "cut":
+            # Simple cut with gap - use CompositeVideoClip with explicit timing
+            clip2_start = clip1.duration + gap_duration
+            return CompositeVideoClip([
+                clip1,
+                clip2.with_start(clip2_start)
+            ], size=clip1.size)
+
+        else:
+            # Default to crossfade
+            logger.warning(f"Unknown transition type: {transition_type}. Using crossfade.")
+            return self._apply_transition(clip1, clip2, "fade", duration)
+
+    def _process_audio(self, audio_clip):
+        """Enhance audio clip for better quality with safety checks
+
+        Args:
+            audio_clip: Audio clip to enhance
+
+        Returns:
+            Enhanced audio clip
+        """
+        if audio_clip is None:
             return None
 
-        try:
-            # Limit text length for overlay
-            if len(text) > 100:
-                text = text[:97] + "..."
+        # Apply audio normalization - critical for mobile viewing
+        # enhanced_audio = AudioEffects.normalize_audio(audio_clip)
+        enhanced_audio = audio_clip
 
-            # Create text clip with background
-            txt_clip = TextClip(
-                text,
-                fontsize=self.fontsize,
-                font=self.font,
-                color=self.text_color,
-                bg_color=self.text_bg_color,
-                method='caption',
-                align='center',
-                size=(size[0] - 40, None)  # Width slightly less than image width
+        # Calculate safe fade durations based on clip length
+        # Use very minimal fades to avoid timing issues
+        clip_duration = enhanced_audio.duration
+        fade_in_duration = min(0.03, clip_duration * 0.03)  # 3% of duration or 30ms, whichever is smaller
+        fade_out_duration = min(0.05, clip_duration * 0.05)  # 5% of duration or 50ms, whichever is smaller
+
+        # Apply fades only if duration is sufficient
+        if clip_duration > fade_in_duration * 2:
+            enhanced_audio = AudioEffects.audio_fade_in(enhanced_audio, fade_in_duration)
+
+        if clip_duration > fade_out_duration * 2:
+            enhanced_audio = AudioEffects.audio_fade_out(enhanced_audio, fade_out_duration)
+
+        return enhanced_audio
+
+    def _add_subtitles(self, video_clip, text, duration, animation_style=None):
+        """Add animated subtitles to video clip
+
+        Args:
+            video_clip: Video clip to add subtitles to
+            text: Subtitle text
+            duration: Duration for subtitles
+            animation_style: Style of animation for subtitles
+
+        Returns:
+            Video with subtitles
+        """
+        # Get video dimensions
+        width, height = video_clip.size
+
+        # For short form content, chunk text for better readability
+        max_chars = 40 if self.platform in ['tiktok', 'instagram_reels'] else 50
+        text_chunks = self.subtitle_generator.chunk_subtitles(text, max_chars)
+
+        if not text_chunks:
+            return video_clip
+
+        # If single chunk, create one subtitle
+        if len(text_chunks) == 1:
+            subtitle = self.subtitle_generator.create_subtitle_clip(
+                text_chunks[0],
+                duration,
+                (width, height),
+                position='bottom',
+                animation_style=animation_style
             )
 
-            # Position the text
-            if position == "top":
-                txt_clip = txt_clip.set_position(('center', 20))
-            elif position == "bottom":
-                txt_clip = txt_clip.set_position(('center', 'bottom'))
-            else:  # center or default
-                txt_clip = txt_clip.set_position('center')
+            # Add subtitle to video
+            return CompositeVideoClip([video_clip, subtitle])
 
-            # Set duration and add fade
-            txt_clip = txt_clip.set_duration(duration)
-            # Use our compatibility wrappers for effects
-            txt_clip = vfx.FadeIn(txt_clip, 0.5)
-            txt_clip = vfx.FadeOut(txt_clip, 0.5)
+        # For multiple chunks, calculate timing
+        chunks_duration = duration / len(text_chunks)
+        subtitle_clips = []
 
-            return txt_clip
-        except Exception as e:
-            logger.error(f"Error creating text overlay: {e}")
-            logger.error(traceback.format_exc())
-            return None
+        # Generate subtitle for each chunk
+        for i, chunk in enumerate(text_chunks):
+            # Calculate timing for this chunk
+            chunk_start = i * chunks_duration
+            chunk_duration = min(chunks_duration, duration - chunk_start)
 
-    def _apply_transition(self, clip1, clip2, transition_type: str, duration: float = 0.5):
-        """Apply transition between two clips with improved compatibility."""
-        if not self.moviepy_available:
-            logger.error("MoviePy is not available. Cannot apply transitions.")
-            return None
+            # Create subtitle clip
+            subtitle = self.subtitle_generator.create_subtitle_clip(
+                chunk,
+                chunk_duration,
+                (width, height),
+                position='bottom',
+                animation_style=animation_style
+            )
 
-        try:
-            if transition_type == "fade" or transition_type == "crossfade":
-                # Create a crossfade transition
-                clip1 = vfx.FadeOut(clip1, duration)
-                clip2 = vfx.FadeIn(clip2, duration)
+            # Position in time
+            subtitle = subtitle.with_start(chunk_start)
 
-                # Create crossfade effect - handle different MoviePy versions
-                try:
-                    transition_clip = concatenate_videoclips(
-                        [clip1.subclip(0, clip1.duration - duration),
-                         clip2],
-                        method="compose"
-                    )
-                except TypeError:
-                    # For older versions that may not support "compose"
-                    transition_clip = concatenate_videoclips(
-                        [clip1.subclip(0, clip1.duration - duration),
-                         clip2]
-                    )
+            subtitle_clips.append(subtitle)
 
-                return transition_clip
-
-            elif transition_type == "wipe":
-                # Implement a simple wipe transition
-                def make_frame(t):
-                    if t < duration:
-                        # Calculate progress ratio
-                        ratio = t / duration
-                        frame1 = clip1.get_frame(clip1.duration - duration + t)
-                        frame2 = clip2.get_frame(t)
-                        width = frame1.shape[1]
-                        # Create wipe effect from left to right
-                        split = int(width * ratio)
-                        frame = frame1.copy()
-                        frame[:, split:] = frame2[:, split:]
-                        return frame
-                    else:
-                        return clip2.get_frame(t)
-
-                from moviepy.video.VideoClip import VideoClip
-                transition = VideoClip(make_frame=make_frame, duration=duration)
-                transition = transition.set_fps(clip1.fps)
-
-                # Handle audio transition
-                if hasattr(clip1, 'audio') and clip1.audio is not None and hasattr(clip2,
-                                                                                   'audio') and clip2.audio is not None:
-                    # Cross-fade audio
-                    audio1 = clip1.audio.subclip(clip1.duration - duration, clip1.duration)
-                    audio2 = clip2.audio.subclip(0, duration)
-
-                    # Apply volume adjustments with compatibility checks
-                    if hasattr(audio1, 'volumex'):
-                        audio1 = audio1.volumex(lambda t: 1 - t / duration)
-                        audio2 = audio2.volumex(lambda t: t / duration)
-                    else:
-                        # Fallback method if volumex is not available
-                        audio1 = audio1.fl(lambda gf, t: gf(t) * (1 - t / duration))
-                        audio2 = audio2.fl(lambda gf, t: gf(t) * (t / duration))
-
-                    try:
-                        transition_audio = CompositeAudioClip([audio1, audio2])
-                        transition = transition.set_audio(transition_audio)
-                    except:
-                        logger.warning("Could not create composite audio for transition. Using silent transition.")
-
-                # Combine clips with transition
-                try:
-                    return concatenate_videoclips([
-                        clip1.subclip(0, clip1.duration - duration),
-                        transition,
-                        clip2.subclip(duration)
-                    ])
-                except:
-                    logger.warning("Error in wipe transition. Falling back to simple cut.")
-                    return concatenate_videoclips([clip1, clip2])
-
-            else:
-                # Default to cut (no transition)
-                return concatenate_videoclips([clip1, clip2])
-
-        except Exception as e:
-            logger.error(f"Error applying transition: {e}")
-            logger.error(traceback.format_exc())
-            # Fall back to simple concatenation
-            try:
-                return concatenate_videoclips([clip1, clip2])
-            except:
-                logger.error("Failed to concatenate clips even with simple method")
-                return clip1  # Just return the first clip as a last resort
+        # Add all subtitles to video
+        return CompositeVideoClip([video_clip] + subtitle_clips)
 
     def assemble_video(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Assemble final video from processed scenes."""
-        if not self.moviepy_available:
-            logger.error("MoviePy is not available. Cannot assemble video.")
-            return {
-                "success": False,
-                "error": "MoviePy library is not available. Cannot assemble video.",
-                "state": state
-            }
-
-        processed_scenes = state["processed_scenes"]
-        script = state["script"]
+        """Assemble final video from processed scenes with improved timing synchronization"""
+        processed_scenes = state.get("processed_scenes", [])
+        script = state.get("script", {})
+        hook_audio_path = state.get("hook_audio_path")
 
         # Create a unique output filename
         output_filename = f"video_{int(time.time())}.mp4"
@@ -360,8 +785,8 @@ class VideoAssembler:
             # Filter out scenes with missing assets
             valid_scenes = [
                 scene for scene in processed_scenes
-                if "image_path" in scene and scene["image_path"] and os.path.exists(scene["image_path"]) and
-                   "voice_path" in scene and scene["voice_path"] and os.path.exists(scene["voice_path"])
+                if "image_path" in scene and os.path.exists(scene["image_path"]) and
+                   "voice_path" in scene and os.path.exists(scene["voice_path"])
             ]
 
             if not valid_scenes:
@@ -394,91 +819,142 @@ class VideoAssembler:
                     # Default to 16:9
                     target_width, target_height = 1920, 1080
 
-            for i, scene in enumerate(valid_scenes):
+            # Create hook clip if hook audio exists
+            hook_clip = None
+            if hook_audio_path and os.path.exists(hook_audio_path) and "hook" in script:
                 try:
-                    # Load image
-                    img_clip = ImageClip(scene["image_path"])
+                    # Load hook audio
+                    hook_audio = AudioFileClip(hook_audio_path)
 
-                    # Resize image to target dimensions while maintaining aspect ratio
-                    img_width, img_height = img_clip.size
+                    # Precise hook duration based on audio
+                    hook_duration = hook_audio.duration
 
-                    # Apply Ken Burns effect (subtle zoom) if motion effects enabled
-                    if self.config.visual.motion_effects:
-                        try:
-                            # Zoom in slightly over the duration
-                            zoom_factor = 1.05
-                            img_clip = img_clip.resize(lambda t: 1 + (zoom_factor - 1) * t / scene["duration"])
-                        except:
-                            logger.warning("Could not apply zoom effect. Using static image.")
+                    # Use first scene's image for hook background (or a default image)
+                    hook_image_path = valid_scenes[0]["image_path"] if valid_scenes else None
 
-                    # Resize to target dimensions
-                    try:
-                        img_clip = img_clip.resize(width=target_width, height=target_height)
-                    except:
-                        logger.warning(f"Error resizing image to {target_width}x{target_height}. Using original size.")
+                    if hook_image_path and os.path.exists(hook_image_path):
+                        # Create image clip for hook
+                        hook_img = ImageClip(hook_image_path)
 
-                    # Set duration
-                    img_clip = img_clip.set_duration(scene["duration"])
+                        # Resize and center as needed
+                        if hook_img.size[0] / hook_img.size[1] > target_width / target_height:
+                            hook_img = hook_img.resized(height=target_height)
+                        else:
+                            hook_img = hook_img.resized(width=target_width)
 
-                    # Add text overlay if specified
-                    if scene.get("text_overlay") and self.config.platform_config.text_overlay:
-                        txt_clip = self._create_text_overlay(
-                            scene["text_overlay"],
-                            scene["text_position"],
-                            scene["duration"],
-                            (target_width, target_height)
+                        # Add background
+                        bg_clip = ColorClip(size=(target_width, target_height), color=(0, 0, 0))
+                        bg_clip = bg_clip.with_duration(hook_duration)
+
+                        # Composite
+                        hook_img = CompositeVideoClip([
+                            bg_clip,
+                            hook_img.with_position('center')
+                        ])
+
+                        # Apply visual effects for hook to be attention-grabbing
+                        hook_img = self._apply_visual_effects(hook_img, -1, len(valid_scenes) + 1)
+
+                        # Set hook audio
+                        hook_clip = hook_img.with_duration(hook_duration).with_audio(hook_audio)
+
+                        # Add hook subtitles
+                        hook_text = script["hook"]
+                        hook_clip = self._add_subtitles(
+                            hook_clip,
+                            hook_text,
+                            hook_duration,
+                            animation_style='pop'  # Attention-grabbing for hook
                         )
 
-                        if txt_clip:
-                            # Apply text animation if enabled
-                            if self.config.visual.text_animation:
-                                try:
-                                    txt_clip = vfx.FadeIn(txt_clip, 0.5)
-                                    txt_clip = vfx.FadeOut(txt_clip, 0.5)
-                                except:
-                                    logger.warning("Could not apply text animation. Using static text.")
+                        # Add to video clips at the beginning
+                        video_clips.append(hook_clip)
 
-                            # Combine image and text
-                            try:
-                                video_clip = CompositeVideoClip([img_clip, txt_clip])
-                            except:
-                                logger.warning("Error creating composite with text overlay. Using image only.")
-                                video_clip = img_clip
-                        else:
-                            video_clip = img_clip
+                        logger.info(f"Added spoken hook with duration: {hook_duration:.2f}s")
+                except Exception as e:
+                    logger.error(f"Error creating hook clip: {e}")
+                    logger.error(traceback.format_exc())
+
+            # Process each scene
+            for i, scene in enumerate(valid_scenes):
+                try:
+                    # First load and analyze the audio to get exact duration
+                    # This is critical to ensure proper timing synchronization
+                    audio_clip = AudioFileClip(scene["voice_path"])
+
+                    # Add a small safety margin to audio duration (trim 20ms from end)
+                    precise_duration = max(audio_clip.duration - 0.02, 0.1)  # Ensure minimum 0.1s
+
+                    # Apply precise duration to the scene for consistency
+                    scene["precise_duration"] = precise_duration
+
+                    # For audio processing, we apply a slightly shorter duration
+                    # to prevent the timing error
+                    audio_clip = audio_clip.subclipped(0, precise_duration)
+
+                    # Process audio for better quality
+                    enhanced_audio = self._process_audio(audio_clip)
+
+                    # Now load image and set it to the exact audio duration
+                    img_clip = ImageClip(scene["image_path"])
+
+                    # Resize to target dimensions while preserving aspect ratio
+                    # First get image dimensions
+                    img_width, img_height = img_clip.size
+
+                    # Determine scaling approach based on aspect ratio
+                    if img_width / img_height > target_width / target_height:
+                        # Image is wider than target - scale by height
+                        img_clip = img_clip.resized(height=target_height)
                     else:
-                        video_clip = img_clip
+                        # Image is taller than target - scale by width
+                        img_clip = img_clip.resized(width=target_width)
 
-                    # Add audio
-                    try:
-                        audio_clip = AudioFileClip(scene["voice_path"])
+                    # Get new dimensions after resizing
+                    new_width, new_height = img_clip.size
 
-                        # If audio is longer than clip duration, extend clip duration
-                        if audio_clip.duration > video_clip.duration:
-                            video_clip = video_clip.set_duration(audio_clip.duration)
-                        # If audio is shorter, extend audio with silence
-                        elif audio_clip.duration < video_clip.duration:
-                            try:
-                                from pydub import AudioSegment
-                                silence_path = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
-                                silence = AudioSegment.silent(
-                                    duration=(video_clip.duration - audio_clip.duration) * 1000)
-                                silence.export(silence_path, format="mp3")
+                    # Create background of exact target dimensions
+                    bg_clip = ColorClip(size=(target_width, target_height), color=(0, 0, 0))
+                    bg_clip = bg_clip.with_duration(precise_duration)
 
-                                # Concatenate audio
-                                silence_clip = AudioFileClip(silence_path)
-                                audio_clip = concatenate_audioclips([audio_clip, silence_clip])
-                            except ImportError:
-                                logger.warning("pydub not available. Audio might end before video.")
-                            except:
-                                logger.warning("Error extending audio with silence. Audio might end before video.")
+                    # Composite image on background
+                    img_clip = CompositeVideoClip([
+                        bg_clip,
+                        img_clip.with_position('center')
+                    ])
 
-                        # Set audio
-                        video_clip = video_clip.set_audio(audio_clip)
-                    except:
-                        logger.warning(f"Error adding audio to scene {i}. Video will be silent.")
+                    # Set duration to match audio exactly
+                    img_clip = img_clip.with_duration(precise_duration)
 
-                    # Add to list
+                    # Apply visual effects based on platform and position
+                    img_clip = self._apply_visual_effects(img_clip, i, len(valid_scenes))
+
+                    # Set enhanced audio
+                    video_clip = img_clip.with_audio(enhanced_audio)
+
+                    # Always add subtitles for the spoken content
+                    if "text" in scene and scene["text"]:
+                        # Determine animation style based on scene position
+                        if i == 0:
+                            # First scene - more attention-grabbing
+                            animation_style = 'pop'
+                        elif i == len(valid_scenes) - 1:
+                            # Last scene - fade for conclusion
+                            animation_style = 'fade'
+                        else:
+                            # Middle scenes - vary styles
+                            animation_styles = ['slide', 'fade', 'pop', 'gradient', 'typewriter']
+                            animation_style = animation_styles[i % len(animation_styles)]
+
+                        # Add animated subtitles - use precise_duration for consistent timing
+                        video_clip = self._add_subtitles(
+                            video_clip,
+                            scene["text"],
+                            precise_duration,
+                            animation_style
+                        )
+
+                    # Add clip to list
                     video_clips.append(video_clip)
 
                 except Exception as e:
@@ -486,7 +962,7 @@ class VideoAssembler:
                     logger.error(traceback.format_exc())
 
             if not video_clips:
-                logger.error("No valid video clips to assemble")
+                logger.error("Failed to create any valid video clips")
                 return {
                     "success": False,
                     "error": "Failed to create any valid video clips",
@@ -500,24 +976,27 @@ class VideoAssembler:
             if len(video_clips) == 1:
                 final_clips = video_clips
             else:
-                # Create a list of transitions from scene data
+                # Create transitions between clips
                 transitions = [scene.get("transition", "fade") for scene in valid_scenes[:-1]]
 
-                # Apply the first clip
+                # Apply transitions sequentially with safer timing
                 result_clip = video_clips[0]
 
-                # Apply transitions sequentially
                 for i in range(len(video_clips) - 1):
                     try:
                         # Get transition type
-                        transition_type = transitions[i]
+                        transition_type = transitions[i] if i < len(transitions) else "fade"
 
-                        # Apply transition to next clip
+                        # Apply transition to next clip with a slightly shorter overlap
+                        # to prevent timing issues
+                        transition_duration = min(0.4, min(result_clip.duration, video_clips[i + 1].duration) / 4)
+
+                        # Apply transition with safe duration
                         result_clip = self._apply_transition(
                             result_clip,
                             video_clips[i + 1],
                             transition_type,
-                            duration=self.config.visual.transition_style == "smooth" and 0.75 or 0.5
+                            duration=transition_duration
                         )
                     except Exception as e:
                         logger.error(f"Error applying transition {i}: {e}")
@@ -527,107 +1006,21 @@ class VideoAssembler:
                             result_clip = concatenate_videoclips([result_clip, video_clips[i + 1]])
                         except:
                             logger.error(f"Failed to concatenate clips {i} and {i + 1}")
-                            # Just keep what we have so far
                             break
 
                 final_clips = [result_clip]
 
-            # Concatenate all clips if we have multiple
-            logger.info("Finalizing video...")
+            # Concatenate if multiple clips
             if len(final_clips) > 1:
                 try:
                     final_video = concatenate_videoclips(final_clips)
                 except Exception as e:
                     logger.error(f"Error concatenating final clips: {e}")
-                    logger.error(traceback.format_exc())
-                    # Use the first clip as fallback
                     final_video = final_clips[0]
             else:
                 final_video = final_clips[0]
 
-            # Add background music if available
-            # NOTE: This would be implemented with a music library
-
-            # Add hook overlay at the beginning if specified
-            if "hook" in script and self.config.platform_config.optimize_hook:
-                try:
-                    hook_duration = min(self.config.platform_config.hook_duration, final_video.duration)
-                    hook_font_size = self.fontsize + 10  # Bigger font for hook
-
-                    hook_txt = TextClip(
-                        script["hook"],
-                        fontsize=hook_font_size,
-                        font=self.font,
-                        color=self.text_color,
-                        bg_color=self.text_bg_color,
-                        method='caption',
-                        align='center',
-                        size=(target_width - 40, None)
-                    )
-                    hook_txt = hook_txt.set_position('center').set_duration(hook_duration)
-                    hook_txt = vfx.FadeIn(hook_txt, 0.5)
-                    hook_txt = vfx.FadeOut(hook_txt, 0.5)
-
-                    # Overlay hook on beginning of video
-                    hook_section = final_video.subclip(0, hook_duration)
-                    hook_overlay = CompositeVideoClip([hook_section, hook_txt])
-
-                    # Replace beginning with hook overlay
-                    if final_video.duration > hook_duration:
-                        final_video = concatenate_videoclips([
-                            hook_overlay,
-                            final_video.subclip(hook_duration)
-                        ])
-                    else:
-                        final_video = hook_overlay
-                except Exception as e:
-                    logger.error(f"Error adding hook overlay: {e}")
-                    logger.error(traceback.format_exc())
-
-            # Apply visual filters if enabled
-            if self.config.visual.apply_filters:
-                try:
-                    logger.info("Applying visual filters...")
-
-                    # Check if MoviePy's MultiplyColor effect is available
-                    multiply_available = False
-                    try:
-                        from moviepy.video.fx.colorx import colorx
-                        multiply_available = True
-                    except ImportError:
-                        try:
-                            from moviepy.video.fx.MultiplyColor import MultiplyColor
-                            multiply_available = True
-                        except ImportError:
-                            logger.warning("Could not import color effects. Using basic filters.")
-
-                    # Apply a subtle color grading based on the color scheme
-                    if multiply_available:
-                        if self.config.visual.color_scheme == "vibrant":
-                            # Increase saturation slightly
-                            try:
-                                final_video = colorx(final_video, 1.2)
-                            except:
-                                try:
-                                    from moviepy.video.fx.MultiplyColor import MultiplyColor
-                                    final_video = MultiplyColor(final_video, 1.2)
-                                except:
-                                    logger.warning("Could not apply vibrant filter.")
-
-                        elif self.config.visual.color_scheme == "muted":
-                            # Decrease saturation slightly
-                            try:
-                                final_video = colorx(final_video, 0.8)
-                            except:
-                                try:
-                                    from moviepy.video.fx.MultiplyColor import MultiplyColor
-                                    final_video = MultiplyColor(final_video, 0.8)
-                                except:
-                                    logger.warning("Could not apply muted filter.")
-                except Exception as e:
-                    logger.error(f"Error applying visual filters: {e}")
-
-            # Write final video
+            # Write final video using a try-except with several fallback strategies
             logger.info(f"Writing video to {output_path}...")
 
             # Create temporary directory for intermediate files
@@ -635,40 +1028,102 @@ class VideoAssembler:
             temp_audio = os.path.join(temp_dir, 'temp_audio.m4a')
 
             try:
-                # Use a safer set of parameters for write_videofile
+                # First attempt - use AV1 with reasonable quality
                 final_video.write_videofile(
                     output_path,
                     codec='libx264',
+                    # codec='libaom-av1',  # AV1 codec
                     audio_codec='aac',
                     temp_audiofile=temp_audio,
                     remove_temp=True,
                     threads=4,
                     fps=self.config.platform_config.framerate,
-                    preset='medium',  # Less demanding preset
-                    bitrate='5000k'  # Reasonable bitrate
+                    preset='medium',
+                    bitrate='3000k',  # Reasonable bitrate for AV1 (lower than H.264 for similar quality)
+                    ffmpeg_params=['-crf', '30']  # Constant Rate Factor - lower is better quality (range 0-63 for AV1)
                 )
             except Exception as e:
-                logger.error(f"Error writing video file: {e}")
-                logger.error(traceback.format_exc())
+                # Check if the error is related to audio timing
+                if "Accessing time t=" in str(e) and "with clip duration=" in str(e):
+                    logger.warning("Audio timing error detected. Trying with audio preprocessing...")
 
-                # Try with simpler parameters as fallback
-                try:
+                    try:
+                        # Try extracting and preprocessing audio separately
+                        temp_audio_path = os.path.join(temp_dir, 'preprocessed_audio.wav')
+
+                        # Write audio with safety margins
+                        if hasattr(final_video, 'audio') and final_video.audio:
+                            # Get audio and apply a safety margin
+                            safe_audio = final_video.audio.subclipped(0, final_video.audio.duration - 0.05)
+                            safe_audio.write_audiofile(temp_audio_path, fps=44100)
+
+                            # Create a new video without audio
+                            video_without_audio = final_video.without_audio()
+
+                            # Create a new audio clip from the safely processed file
+                            processed_audio = AudioFileClip(temp_audio_path)
+
+                            # Combine video with processed audio
+                            final_video = video_without_audio.with_audio(processed_audio)
+
+                        # Try writing with the preprocessed audio, using AV1
+                        final_video.write_videofile(
+                            output_path,
+                            codec='libx264',
+                            # codec='libaom-av1',
+                            audio_codec='aac',
+                            temp_audiofile=temp_audio,
+                            remove_temp=True,
+                            threads=2,
+                            fps=24,
+                            preset='medium',
+                            bitrate='2000k',  # Lower bitrate for faster encoding in fallback
+                            ffmpeg_params=['-crf', '35']  # Slightly lower quality for speed in fallback
+                        )
+                    except Exception as e2:
+                        logger.error(f"Second attempt also failed: {e2}")
+
+                        # Final fallback - try without audio processing
+                        try:
+                            logger.info("Trying with simpler parameters and without audio processing...")
+                            final_video.write_videofile(
+                                output_path,
+                                codec='libx264',
+                                audio_codec='aac',
+                                threads=1,
+                                fps=24,
+                                preset='ultrafast',
+                                write_logfile=True
+                            )
+                        except Exception as e3:
+                            logger.error(f"All video export attempts failed: {e3}")
+                            return {
+                                "success": False,
+                                "error": f"Failed to write video file after multiple attempts: {str(e3)}",
+                                "state": state
+                            }
+                else:
+                    # For other errors, try with simpler parameters
                     logger.info("Retrying with simpler video export settings...")
-                    final_video.write_videofile(
-                        output_path,
-                        codec='libx264',
-                        audio_codec='aac',
-                        threads=2,
-                        fps=24,
-                        preset='ultrafast'  # Less quality but more reliable
-                    )
-                except Exception as e2:
-                    logger.error(f"Second attempt at writing video also failed: {e2}")
-                    return {
-                        "success": False,
-                        "error": f"Failed to write video file: {str(e2)}",
-                        "media_data": media_data
-                    }
+                    try:
+                        # Fallback to SVT-AV1 with faster preset
+                        final_video.write_videofile(
+                            output_path,
+                            codec='libsvtav1',
+                            audio_codec='aac',
+                            threads=2,
+                            fps=24,
+                            preset='10',  # SVT-AV1 preset (0-13, higher is faster)
+                            bitrate='2000k',
+                            ffmpeg_params=['-crf', '38']  # Compromise between quality and speed
+                        )
+                    except Exception as e2:
+                        logger.error(f"Second attempt at writing video also failed: {e2}")
+                        return {
+                            "success": False,
+                            "error": f"Failed to write video file: {str(e2)}",
+                            "state": state
+                        }
 
             # Cleanup temporary directory
             try:
@@ -685,7 +1140,7 @@ class VideoAssembler:
                 "video_path": output_path,
                 "duration": final_video.duration,
                 "resolution": f"{target_width}x{target_height}",
-                "media_data": media_data
+                "state": state
             }
 
         except Exception as e:
@@ -703,8 +1158,8 @@ class VideoAssembler:
         # Get prompt template
         prompt_data = self.config.get_prompts_data()
         prompt_data.update({
-            "script": state["script"],
-            "content_strategy": state["content_strategy"]
+            "script": state.get("script", {}),
+            "content_strategy": state.get("content_strategy", {})
         })
 
         prompt = self.prompt_manager.render_template("metadata_generation", **prompt_data)
@@ -777,7 +1232,7 @@ class VideoAssembler:
             # Create basic metadata
             basic_metadata = {
                 "title": f"Video {int(time.time())}",
-                "description": script_data["script"].get("hook", ""),
+                "description": state.get("script", {}).get("hook", ""),
                 "hashtags": [f"#{self.config.platform}"],
                 "category": "Entertainment",
                 "platform": self.config.platform,
@@ -789,19 +1244,11 @@ class VideoAssembler:
 
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Assemble video and generate metadata."""
-        # Check if MoviePy is available
-        if not self.moviepy_available:
-            logger.error("MoviePy is not available. Video assembly will not work.")
-            result = state.copy()
-            result["success"] = False
-            result["error"] = "MoviePy library is not available. Cannot assemble video."
-            return result
-
         # Assemble video
-        logger.info("Assembling final video...")
+        logger.info("Assembling final video with enhanced effects and subtitles...")
         assembly_result = self.assemble_video(state)
 
-        if not assembly_result["success"]:
+        if not assembly_result.get("success", False):
             logger.error(f"Video assembly failed: {assembly_result.get('error', 'Unknown error')}")
             result = state.copy()
             result["success"] = False
@@ -809,7 +1256,7 @@ class VideoAssembler:
             return result
 
         # Generate metadata
-        logger.info("Generating video metadata...")
+        logger.info("Generating platform-optimized video metadata...")
         metadata = self.generate_metadata(state, assembly_result)
 
         # Update state with video path and metadata
@@ -817,5 +1264,5 @@ class VideoAssembler:
         result["success"] = True
         result["video_path"] = assembly_result["video_path"]
         result["metadata"] = metadata
-        
+
         return result
