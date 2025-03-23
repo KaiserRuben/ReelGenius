@@ -14,6 +14,7 @@ export default function CreateVideoForm({ platformData }: CreateVideoFormProps) 
   const router = useRouter();
   const [content, setContent] = useState('');
   const [platform, setPlatform] = useState<PlatformType>('tiktok');
+  const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +166,7 @@ While still in early stages, quantum computing promises to revolutionize computi
         body: JSON.stringify({
           content,
           platform,
+          voice_gender: voiceGender,
           config_overrides
         }),
       });
@@ -208,22 +210,40 @@ While still in early stages, quantum computing promises to revolutionize computi
       {/* Show the form when no task is in progress */}
       {!taskId && (
         <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="platform" className="block text-sm font-medium mb-1">
-              Select Platform
-            </label>
-            <select
-              id="platform"
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value as PlatformType)}
-              disabled={isLoading}
-              className="w-full p-2 border border-input rounded-md bg-transparent"
-            >
-              <option value="tiktok">TikTok</option>
-              <option value="youtube_shorts">YouTube Shorts</option>
-              <option value="instagram_reels">Instagram Reels</option>
-              <option value="general">General</option>
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label htmlFor="platform" className="block text-sm font-medium mb-1">
+                Select Platform
+              </label>
+              <select
+                id="platform"
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value as PlatformType)}
+                disabled={isLoading}
+                className="w-full p-2 border border-input rounded-md bg-transparent"
+              >
+                <option value="tiktok">TikTok</option>
+                <option value="youtube_shorts">YouTube Shorts</option>
+                <option value="instagram_reels">Instagram Reels</option>
+                <option value="general">General</option>
+              </select>
+            </div>
+            
+            <div>
+              <label htmlFor="voiceGender" className="block text-sm font-medium mb-1">
+                Voice Gender
+              </label>
+              <select
+                id="voiceGender"
+                value={voiceGender}
+                onChange={(e) => setVoiceGender(e.target.value as 'male' | 'female')}
+                disabled={isLoading}
+                className="w-full p-2 border border-input rounded-md bg-transparent"
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
           </div>
           
           <div className="mb-4">
@@ -485,6 +505,8 @@ While still in early stages, quantum computing promises to revolutionize computi
               <span className="font-mono">{taskId}</span>
               <span className="text-muted-foreground">Platform:</span>
               <span>{platform}</span>
+              <span className="text-muted-foreground">Voice Gender:</span>
+              <span>{voiceGender}</span>
               <span className="text-muted-foreground">Status:</span>
               <span className={
                 taskStatus === 'completed' ? 'text-green-500' :

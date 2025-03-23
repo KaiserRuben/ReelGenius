@@ -217,17 +217,14 @@ class AnimatedSubtitle:
         self.config = config
         self.platform = config.platform
 
-        # Set default style based on platform
+        # Set default style based on platform with larger fonts
         if self.platform in ['tiktok', 'instagram_reels']:
-            # More dynamic style for these platforms
             self.default_animation = 'pop'
-            self.fontsize = 42  # Larger for better visibility
-            self.stroke_width = 2.0  # Thicker outline instead of background
+            self.fontsize = 56  # Increased from 42
         else:
-            # More conservative for YouTube
+            # More conservative for YouTube but still larger
             self.default_animation = 'fade'
-            self.fontsize = 36
-            self.stroke_width = 1.5
+            self.fontsize = 48  # Increased from 36
 
         # Check for local font in the fonts directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -247,32 +244,27 @@ class AnimatedSubtitle:
 
     def _get_platform_text_style(self):
         """Get subtitle styling based on platform"""
-        # Base style for all platforms - modern approach
+        # Base style for all platforms - modern approach with larger fonts
         style = {
             'font': self.font,
             'fontsize': self.fontsize,
-            'color': 'white',
-            'stroke_color': 'black',
-            'stroke_width': self.stroke_width,
+            'color': 'white',  # Keep white for best contrast
             'method': 'caption',
             'align': 'center',
         }
 
-        # Platform specific adjustments
+        # Platform specific adjustments with larger fonts
         if self.platform == 'tiktok':
             # TikTok - bold text with strong contrast
-            style['fontsize'] = 42
-            style['stroke_width'] = 2.0
+            style['fontsize'] = 56  # Increased from 42
             style['color'] = '#FFFFFF'  # Pure white
         elif self.platform == 'instagram_reels':
             # Instagram - clean, modern look
-            style['fontsize'] = 40
-            style['stroke_width'] = 1.8
+            style['fontsize'] = 52  # Increased from 40
             style['color'] = '#FFFFFF'
         elif self.platform == 'youtube_shorts':
             # YouTube - slightly more conservative
-            style['fontsize'] = 36
-            style['stroke_width'] = 1.5
+            style['fontsize'] = 48  # Increased from 36
 
         return style
 

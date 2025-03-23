@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Depends
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional, Dict, List, Any, Union, Literal
 import os
 import json
@@ -14,6 +14,8 @@ from loguru import logger
 import traceback
 from pymongo import MongoClient
 from datetime import datetime, timedelta
+import imghdr
+import mimetypes
 
 from .config import PipelineConfig, PlatformType
 from .tasks import celery_app, generate_video
@@ -55,6 +57,7 @@ TASK_RETENTION_PERIOD = int(os.environ.get("TASK_RETENTION_PERIOD", "86400"))  #
 class VideoGenerationRequest(BaseModel):
     content: str
     platform: Optional[PlatformType] = "tiktok"
+    voice_gender: Optional[str] = "male"  # Add voice gender selection (male/female)
     config_overrides: Optional[Dict[str, Any]] = None
 
 
@@ -64,12 +67,55 @@ class VideoGenerationResponse(BaseModel):
     message: str
 
 
+class SceneMediaInfo(BaseModel):
+    """Detailed information about scene media assets"""
+    image_path: Optional[str] = None
+    voice_path: Optional[str] = None
+    text: Optional[str] = None
+    duration: Optional[float] = None
+    transition: Optional[str] = None
+    image_prompt: Optional[str] = None
+    visual_description: Optional[str] = None
+    
+    
+class VideoMetadata(BaseModel):
+    """Enhanced video metadata"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    hashtags: Optional[List[str]] = None
+    category: Optional[str] = None  
+    platform: Optional[str] = None
+    duration: Optional[float] = None
+    resolution: Optional[str] = None
+    framerate: Optional[int] = None
+    file_size: Optional[int] = None
+    metadata_path: Optional[str] = None
+
+
+class TaskResult(BaseModel):
+    """Enhanced task result with detailed media information"""
+    video_path: Optional[str] = None
+    metadata: Optional[VideoMetadata] = None
+    execution_time: Optional[float] = None
+    hook_audio_path: Optional[str] = None
+    processed_scenes: Optional[List[SceneMediaInfo]] = None
+    script: Optional[Dict[str, Any]] = None
+    visual_plan: Optional[Dict[str, Any]] = None
+    content_analysis: Optional[Dict[str, Any]] = None
+    
+
 class TaskStatusResponse(BaseModel):
+    """Enhanced task status with comprehensive information"""
     task_id: str
     status: str
     progress: Optional[float] = None
-    result: Optional[Dict[str, Any]] = None
+    result: Optional[TaskResult] = None
     error: Optional[str] = None
+    platform: Optional[str] = None
+    content_summary: Optional[str] = None
+    created_at: Optional[float] = None
+    updated_at: Optional[float] = None
+    execution_time: Optional[float] = None
 
 
 # Cleanup function
@@ -142,12 +188,22 @@ async def create_video(request: VideoGenerationRequest):
             "progress": 0,
             "created_at": datetime.utcnow(),
             "platform": request.platform,
+            "voice_gender": request.voice_gender,
             "content_summary": request.content[:100] + "..." if len(request.content) > 100 else request.content
         })
 
+        # Prepare config overrides
+        overrides = request.config_overrides or {}
+        
+        # Set voice_id based on gender preference
+        if request.voice_gender and request.voice_gender.lower() == "female":
+            overrides.update({"tts": {"voice_id": "tQ4MEZFJOzsahSEEZtHK"}})
+        else:  # default to male
+            overrides.update({"tts": {"voice_id": "7fbQ7yJuEo56rYjrYaEh"}})
+
         # Start Celery task
         celery_result = generate_video.apply_async(
-            args=[task_id, request.content, request.platform, request.config_overrides],
+            args=[task_id, request.content, request.platform, overrides],
             task_id=task_id
         )
 
@@ -173,6 +229,7 @@ async def create_video(request: VideoGenerationRequest):
 async def generate_video_from_file(
         file: UploadFile = File(...),
         platform: PlatformType = Form("tiktok"),
+        voice_gender: str = Form("male"),
         config_overrides: Optional[str] = Form(None)
 ):
     """Generate a video from an uploaded file."""
@@ -211,10 +268,21 @@ async def generate_video_from_file(
             "progress": 0,
             "created_at": datetime.utcnow(),
             "platform": platform,
+            "voice_gender": voice_gender,
             "content_source": file.filename,
             "content_summary": content[:100] + "..." if len(content) > 100 else content
         })
 
+        # Process voice gender from the parameter
+        if not overrides:
+            overrides = {}
+        
+        # Set voice_id based on gender preference
+        if voice_gender.lower() == "female":
+            overrides.update({"tts": {"voice_id": "tQ4MEZFJOzsahSEEZtHK"}})
+        else:  # default to male
+            overrides.update({"tts": {"voice_id": "7fbQ7yJuEo56rYjrYaEh"}})
+            
         # Start Celery task
         celery_result = generate_video.apply_async(
             args=[task_id, content, platform, overrides],
@@ -300,14 +368,87 @@ async def get_task_status(task_id: str):
     # Convert MongoDB ObjectId for proper JSON serialization
     if "_id" in task_info:
         del task_info["_id"]
-
-    # Create response with required fields
+        
+    # Convert timestamps to float for serialization
+    if "created_at" in task_info and isinstance(task_info["created_at"], datetime):
+        task_info["created_at"] = task_info["created_at"].timestamp()
+    if "updated_at" in task_info and isinstance(task_info["updated_at"], datetime):
+        task_info["updated_at"] = task_info["updated_at"].timestamp()
+        
+    # Format result data for enhanced response if available
+    result_data = None
+    if "result" in task_info and task_info["result"]:
+        result = task_info["result"]
+        
+        # Extract scene media info if available
+        processed_scenes = []
+        if "processed_scenes" in result:
+            for scene in result.get("processed_scenes", []):
+                # Add file sizes if available
+                image_size = None
+                voice_size = None
+                if scene.get("image_path") and os.path.exists(scene["image_path"]):
+                    image_size = os.path.getsize(scene["image_path"])
+                if scene.get("voice_path") and os.path.exists(scene["voice_path"]):
+                    voice_size = os.path.getsize(scene["voice_path"])
+                
+                processed_scenes.append(SceneMediaInfo(
+                    image_path=scene.get("image_path"),
+                    voice_path=scene.get("voice_path"),
+                    text=scene.get("text"),
+                    duration=scene.get("precise_duration"),
+                    transition=scene.get("transition"),
+                    image_prompt=scene.get("image_prompt"),
+                    visual_description=scene.get("visual_description")
+                ))
+        
+        # Extract video metadata if available
+        metadata = None
+        if "metadata" in result:
+            meta = result["metadata"]
+            # Add video file size if available
+            file_size = None
+            video_path = result.get("video_path")
+            if video_path and os.path.exists(video_path):
+                file_size = os.path.getsize(video_path)
+                
+            metadata = VideoMetadata(
+                title=meta.get("title"),
+                description=meta.get("description"),
+                hashtags=meta.get("hashtags"),
+                category=meta.get("category"),
+                platform=meta.get("platform"),
+                duration=meta.get("duration") or result.get("duration"),
+                resolution=meta.get("resolution"),
+                framerate=meta.get("framerate", 30),
+                file_size=file_size,
+                metadata_path=meta.get("metadata_path")
+            )
+        
+        # Create comprehensive result object
+        result_data = TaskResult(
+            video_path=result.get("video_path"),
+            metadata=metadata,
+            execution_time=result.get("execution_time") or task_info.get("execution_time"),
+            hook_audio_path=result.get("hook_audio_path"),
+            processed_scenes=processed_scenes if processed_scenes else None,
+            script=result.get("script"),
+            visual_plan=result.get("visual_plan"),
+            content_analysis=result.get("content_analysis")
+        )
+    
+    # Create enhanced response
     return TaskStatusResponse(
         task_id=task_id,
         status=task_info.get("status", "unknown"),
         progress=task_info.get("progress"),
-        result=task_info.get("result"),
-        error=task_info.get("error")
+        result=result_data,
+        error=task_info.get("error"),
+        platform=task_info.get("platform"),
+        content_summary=task_info.get("content_summary"),
+        created_at=task_info.get("created_at"),
+        updated_at=task_info.get("updated_at"),
+        execution_time=task_info.get("execution_time")
     )
 
 
@@ -337,9 +478,9 @@ async def get_video(task_id: str):
     )
 
 
-@app.get("/metadata/{task_id}")
-async def get_metadata(task_id: str):
-    """Get the metadata for a completed task."""
+@app.get("/metadata/{task_id}", response_model=Dict[str, Any])
+async def get_metadata(task_id: str, include_scene_data: bool = Query(False, description="Include detailed scene data")):
+    """Get the metadata for a completed task with enhanced details."""
     task_info = tasks_collection.find_one({"task_id": task_id})
 
     if not task_info:
@@ -350,8 +491,74 @@ async def get_metadata(task_id: str):
 
     if "result" not in task_info or "metadata" not in task_info["result"]:
         raise HTTPException(status_code=400, detail="Metadata not found in task result")
+        
+    # Get basic metadata
+    result = task_info["result"]
+    metadata = result["metadata"]
+    
+    # Add additional information from result
+    enhanced_metadata = dict(metadata)
+    
+    # Add video path and file info
+    if "video_path" in result:
+        video_path = result["video_path"]
+        enhanced_metadata["video_path"] = video_path
+        
+        # Add video file size if available
+        if os.path.exists(video_path):
+            enhanced_metadata["file_size_bytes"] = os.path.getsize(video_path)
+    
+    # Add generation info
+    enhanced_metadata["generation_time"] = result.get("execution_time")
+    
+    # Add scene information if requested
+    if include_scene_data and "processed_scenes" in result:
+        scene_data = []
+        
+        for i, scene in enumerate(result["processed_scenes"]):
+            scene_info = {
+                "index": i,
+                "text": scene.get("text", ""),
+                "duration": scene.get("precise_duration")
+            }
+            
+            # Add media paths and generate URLs if available
+            if scene.get("image_path") and os.path.exists(scene["image_path"]):
+                scene_info["image_path"] = scene["image_path"]
+                scene_info["image_filename"] = os.path.basename(scene["image_path"])
+                scene_info["image_url"] = f"/api/media/image/{task_id}/{i}"
+                scene_info["image_size_bytes"] = os.path.getsize(scene["image_path"])
+                
+            if scene.get("voice_path") and os.path.exists(scene["voice_path"]):
+                scene_info["voice_path"] = scene["voice_path"]
+                scene_info["voice_filename"] = os.path.basename(scene["voice_path"])
+                scene_info["voice_url"] = f"/api/media/audio/{task_id}/{i}"
+                scene_info["voice_size_bytes"] = os.path.getsize(scene["voice_path"])
+                
+            # Add other scene data
+            if "image_prompt" in scene:
+                scene_info["image_prompt"] = scene["image_prompt"]
+                
+            if "visual_description" in scene:
+                scene_info["visual_description"] = scene["visual_description"]
+                
+            scene_data.append(scene_info)
+            
+        enhanced_metadata["scenes"] = scene_data
+        enhanced_metadata["scene_count"] = len(scene_data)
+        
+    # Add script data
+    if "script" in result:
+        enhanced_metadata["script"] = result["script"]
+    
+    # Add hook audio if available
+    if "hook_audio_path" in result and os.path.exists(result["hook_audio_path"]):
+        enhanced_metadata["hook_audio_path"] = result["hook_audio_path"]
+        enhanced_metadata["hook_audio_filename"] = os.path.basename(result["hook_audio_path"])
+        enhanced_metadata["hook_audio_url"] = f"/api/media/audio/{task_id}/hook"
+        enhanced_metadata["hook_audio_size_bytes"] = os.path.getsize(result["hook_audio_path"])
 
-    return task_info["result"]["metadata"]
+    return enhanced_metadata
 
 
 @app.get("/tasks")
@@ -359,9 +566,11 @@ async def list_tasks(
         status: Optional[str] = Query(None, description="Filter by status"),
         platform: Optional[PlatformType] = Query(None, description="Filter by platform"),
         limit: int = Query(10, description="Maximum number of tasks to return"),
-        skip: int = Query(0, description="Number of tasks to skip")
+        skip: int = Query(0, description="Number of tasks to skip"),
+        include_details: bool = Query(False, description="Include additional task details"),
+        include_media_info: bool = Query(False, description="Include media file information")
 ):
-    """List all tasks with optional filtering and pagination."""
+    """List all tasks with optional filtering, pagination, and enhanced information."""
     # Build query filter
     query = {}
     if status:
@@ -383,11 +592,76 @@ async def list_tasks(
             del task["_id"]
 
         # Format timestamps for better readability
-        if "created_at" in task:
+        if "created_at" in task and isinstance(task["created_at"], datetime):
             task["created_at"] = task["created_at"].timestamp()
-        if "updated_at" in task:
+        if "updated_at" in task and isinstance(task["updated_at"], datetime):
             task["updated_at"] = task["updated_at"].timestamp()
-
+            
+        # Include enhanced task information if requested
+        if include_details and task.get("status") == "completed" and "result" in task:
+            result = task["result"]
+            
+            # Add a summary of the video
+            task["summary"] = {
+                "duration": result.get("duration"),
+                "resolution": result.get("resolution"),
+                "scene_count": len(result.get("processed_scenes", [])),
+                "title": result.get("metadata", {}).get("title"),
+                "platform": task.get("platform")
+            }
+            
+            # Add execution metrics
+            task["metrics"] = {
+                "execution_time": result.get("execution_time") or task.get("execution_time"),
+                "start_time": task.get("created_at"),
+                "end_time": task.get("updated_at")
+            }
+            
+            # Add URLs for easy access to media
+            task["urls"] = {
+                "video": f"/video/{task['task_id']}",
+                "metadata": f"/metadata/{task['task_id']}",
+                "scenes": f"/scenes/{task['task_id']}"
+            }
+            
+            # Add media info if requested
+            if include_media_info and "processed_scenes" in result:
+                media_info = {
+                    "image_count": 0,
+                    "audio_count": 0,
+                    "total_image_size_bytes": 0,
+                    "total_audio_size_bytes": 0,
+                    "video_size_bytes": 0
+                }
+                
+                # Count and tally media files
+                for scene in result["processed_scenes"]:
+                    if scene.get("image_path") and os.path.exists(scene["image_path"]):
+                        media_info["image_count"] += 1
+                        media_info["total_image_size_bytes"] += os.path.getsize(scene["image_path"])
+                        
+                    if scene.get("voice_path") and os.path.exists(scene["voice_path"]):
+                        media_info["audio_count"] += 1
+                        media_info["total_audio_size_bytes"] += os.path.getsize(scene["voice_path"])
+                
+                # Add video file size
+                if "video_path" in result and os.path.exists(result["video_path"]):
+                    media_info["video_size_bytes"] = os.path.getsize(result["video_path"])
+                    
+                # Add hook audio if available
+                if "hook_audio_path" in result and os.path.exists(result["hook_audio_path"]):
+                    media_info["has_hook_audio"] = True
+                    media_info["audio_count"] += 1
+                    media_info["total_audio_size_bytes"] += os.path.getsize(result["hook_audio_path"])
+                else:
+                    media_info["has_hook_audio"] = False
+                    
+                task["media_info"] = media_info
+            
+            # Remove the full result to keep the response lighter
+            if "result" in task:
+                del task["result"]
+        
         tasks_list.append(task)
 
     return {
@@ -451,7 +725,14 @@ async def delete_task(task_id: str):
 async def list_platforms():
     """List all supported platforms and their configurations."""
     from .config import PLATFORM_CONFIGS
-    return {"platforms": list(PLATFORM_CONFIGS.keys()), "configs": PLATFORM_CONFIGS}
+    return {
+        "platforms": list(PLATFORM_CONFIGS.keys()), 
+        "configs": PLATFORM_CONFIGS,
+        "voice_options": {
+            "male": "7fbQ7yJuEo56rYjrYaEh",
+            "female": "tQ4MEZFJOzsahSEEZtHK"
+        }
+    }
 
 
 @app.get("/config")
@@ -471,6 +752,148 @@ async def get_config():
         config_dict["image_gen"]["api_key"] = "***" if config_dict["image_gen"]["api_key"] else ""
 
     return {"config": config_dict}
+
+
+@app.get("/media/image/{task_id}/{scene_index}")
+async def get_scene_image(task_id: str, scene_index: int):
+    """Get the image for a specific scene in a completed task."""
+    task_info = tasks_collection.find_one({"task_id": task_id})
+
+    if not task_info:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task_info["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Task is not completed: {task_info['status']}")
+
+    if "result" not in task_info or "processed_scenes" not in task_info["result"]:
+        raise HTTPException(status_code=400, detail="Scene data not found in task result")
+        
+    scenes = task_info["result"]["processed_scenes"]
+    
+    # Handle invalid scene index
+    try:
+        scene_index = int(scene_index)
+        if scene_index < 0 or scene_index >= len(scenes):
+            raise HTTPException(status_code=404, detail=f"Scene index {scene_index} out of range")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid scene index")
+        
+    scene = scenes[scene_index]
+    
+    if "image_path" not in scene or not os.path.exists(scene["image_path"]):
+        raise HTTPException(status_code=404, detail="Image not found for this scene")
+        
+    return FileResponse(
+        scene["image_path"],
+        media_type="image/jpeg",
+        filename=os.path.basename(scene["image_path"])
+    )
+
+
+@app.get("/media/audio/{task_id}/{scene_index}")
+async def get_scene_audio(task_id: str, scene_index: str):
+    """Get the audio for a specific scene or hook in a completed task."""
+    task_info = tasks_collection.find_one({"task_id": task_id})
+
+    if not task_info:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task_info["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Task is not completed: {task_info['status']}")
+
+    if "result" not in task_info:
+        raise HTTPException(status_code=400, detail="Result data not found in task")
+        
+    result = task_info["result"]
+    
+    # Check if requesting hook audio
+    if scene_index.lower() == "hook":
+        if "hook_audio_path" not in result or not os.path.exists(result["hook_audio_path"]):
+            raise HTTPException(status_code=404, detail="Hook audio not found")
+            
+        return FileResponse(
+            result["hook_audio_path"],
+            media_type="audio/mpeg",
+            filename=os.path.basename(result["hook_audio_path"])
+        )
+    
+    # Otherwise, process as regular scene audio
+    if "processed_scenes" not in result:
+        raise HTTPException(status_code=400, detail="Scene data not found in task result")
+        
+    scenes = result["processed_scenes"]
+    
+    # Handle invalid scene index
+    try:
+        scene_idx = int(scene_index)
+        if scene_idx < 0 or scene_idx >= len(scenes):
+            raise HTTPException(status_code=404, detail=f"Scene index {scene_idx} out of range")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid scene index")
+        
+    scene = scenes[scene_idx]
+    
+    if "voice_path" not in scene or not os.path.exists(scene["voice_path"]):
+        raise HTTPException(status_code=404, detail="Audio not found for this scene")
+        
+    return FileResponse(
+        scene["voice_path"],
+        media_type="audio/mpeg",
+        filename=os.path.basename(scene["voice_path"])
+    )
+
+
+@app.get("/scenes/{task_id}")
+async def get_scenes(task_id: str):
+    """Get all scenes with media info for a completed task."""
+    task_info = tasks_collection.find_one({"task_id": task_id})
+
+    if not task_info:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task_info["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Task is not completed: {task_info['status']}")
+
+    if "result" not in task_info or "processed_scenes" not in task_info["result"]:
+        raise HTTPException(status_code=400, detail="Scene data not found in task result")
+        
+    scenes = task_info["result"]["processed_scenes"]
+    result = []
+    
+    # Build enhanced scene info
+    for i, scene in enumerate(scenes):
+        scene_info = {
+            "index": i,
+            "text": scene.get("text", ""),
+            "duration": scene.get("precise_duration"),
+            "transition": scene.get("transition", "crossfade")
+        }
+        
+        # Add media URLs
+        if scene.get("image_path") and os.path.exists(scene["image_path"]):
+            scene_info["image_url"] = f"/media/image/{task_id}/{i}"
+            scene_info["image_size_bytes"] = os.path.getsize(scene["image_path"])
+            
+        if scene.get("voice_path") and os.path.exists(scene["voice_path"]):
+            scene_info["audio_url"] = f"/media/audio/{task_id}/{i}"
+            scene_info["audio_size_bytes"] = os.path.getsize(scene["voice_path"])
+            
+        # Add image generation info
+        if "image_prompt" in scene:
+            scene_info["image_prompt"] = scene["image_prompt"]
+            
+        if "visual_description" in scene:
+            scene_info["visual_description"] = scene["visual_description"]
+            
+        result.append(scene_info)
+        
+    return {
+        "task_id": task_id,
+        "scene_count": len(result),
+        "scenes": result,
+        # Add script if available
+        "script": task_info["result"].get("script")
+    }
 
 
 @app.get("/health")
