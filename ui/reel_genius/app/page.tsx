@@ -1,4 +1,4 @@
-import { getPlatforms } from '@/lib/api';
+import { getPlatforms, PlatformConfig } from '@/lib/api';
 import CreateVideoForm from '@/components/CreateVideoForm';
 
 export default async function Home() {
@@ -14,7 +14,7 @@ export default async function Home() {
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
-          <CreateVideoForm platformData={platformData} />
+          <CreateVideoForm />
         </div>
         
         <div>
@@ -44,7 +44,7 @@ export default async function Home() {
             <div className="card p-4 mt-4">
               <h2 className="text-lg font-semibold mb-3">Platform Information</h2>
               <div className="space-y-3">
-                {Object.entries(platformData.configs || {}).map(([platform, config]: [string, any]) => (
+                {Object.entries(platformData.configs || {}).map(([platform, config]: [string, PlatformConfig]) => (
                   <div key={platform} className="text-sm">
                     <h3 className="font-medium uppercase">{platform.replace('_', ' ')}</h3>
                     <div className="grid grid-cols-2 gap-1 mt-1 text-xs text-muted-foreground">

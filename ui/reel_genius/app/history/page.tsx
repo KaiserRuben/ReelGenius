@@ -1,4 +1,4 @@
-import { getTasks } from '@/lib/api';
+import { getTasks, TaskStatusResponse } from '@/lib/api';
 import Link from 'next/link';
 import StatusBadge from '@/components/StatusBadge';
 
@@ -19,7 +19,7 @@ export default async function HistoryPage() {
   });
   
   // Format timestamp
-  const formatTime = (timestamp: number) => {
+  const formatTime = (timestamp?: number) => {
     if (!timestamp) return 'N/A';
     
     const date = new Date(timestamp * 1000);
@@ -32,7 +32,7 @@ export default async function HistoryPage() {
   };
   
   // Calculate time ago
-  const getTimeAgo = (timestamp: number) => {
+  const getTimeAgo = (timestamp?: number) => {
     if (!timestamp) return '';
     
     const seconds = Math.floor((Date.now() / 1000) - timestamp);
@@ -64,7 +64,7 @@ export default async function HistoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {tasksData.tasks.map((task: any) => (
+              {tasksData.tasks.map((task: TaskStatusResponse) => (
                 <tr key={task.task_id} className="hover:bg-accent/30">
                   <td className="px-4 py-3 text-sm">
                     <div className="font-mono">{task.task_id.substring(0, 8)}...</div>
@@ -95,10 +95,10 @@ export default async function HistoryPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm whitespace-nowrap">
-                    {task.summary?.duration 
-                      ? `${task.summary.duration.toFixed(1)}s` 
-                      : task.metrics?.execution_time 
-                        ? `${task.metrics.execution_time.toFixed(1)}s` 
+                    {task.result?.metadata?.duration 
+                      ? `${task.result.metadata.duration.toFixed(1)}s` 
+                      : task.execution_time 
+                        ? `${task.execution_time.toFixed(1)}s` 
                         : 'N/A'
                     }
                   </td>
@@ -110,9 +110,9 @@ export default async function HistoryPage() {
                       >
                         View
                       </Link>
-                      {task.status === 'completed' && task.urls?.video && (
+                      {task.status === 'completed' && task.result?.video_path && (
                         <a 
-                          href={task.urls.video}
+                          href={`/api/video/${task.task_id}`}
                           className="px-2 py-1 text-xs bg-accent/70 text-foreground rounded hover:bg-accent"
                           target="_blank"
                           rel="noopener noreferrer"

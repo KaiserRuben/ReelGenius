@@ -19,7 +19,7 @@ export default function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
   };
   
   let statusClass = '';
-  let statusText = status;
+  const statusText = status;
   
   switch (status.toLowerCase()) {
     case 'completed':

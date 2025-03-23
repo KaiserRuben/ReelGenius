@@ -1,5 +1,7 @@
 services:
   app:
+    container_name: reelgenius-backend
+    hostname: app
     build: .
     volumes:
       - ./data:/app/data
@@ -19,6 +21,8 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017/videogen
     ports:
       - "8000:8000"
+    networks:
+      - reelgenius-network
     depends_on:
       - redis
       - mongodb
@@ -29,15 +33,32 @@ services:
       retries: 5
       
   ui:
+    container_name: reelgenius-frontend
+    hostname: ui
     build: ./ui/reel_genius
     environment:
-      - NEXT_PUBLIC_API_URL=http://app:8000
+      - NEXT_PUBLIC_API_URL=http://app:8000 
+      - DOCKER_ENV=true
+      - NODE_ENV=production
+      - NEXT_PUBLIC_DEBUG=true
     ports:
       - "3000:3000"
+    networks:
+      - reelgenius-network
     depends_on:
-      - app
+      app:
+        condition: service_healthy
+    # Add a startup command to test connectivity
+    entrypoint: >
+      sh -c "
+        echo 'Testing connectivity before starting the UI...' &&
+        ./docker-test-connectivity.sh &&
+        npm start
+      "
 
   worker:
+    container_name: reelgenius-worker
+    hostname: worker
     build: .
     command: celery -A video_generator.tasks worker --loglevel=info
     volumes:
@@ -56,16 +77,22 @@ services:
       - REDIS_URL=redis://redis:6379/0
       # MongoDB configuration
       - MONGODB_URL=mongodb://mongodb:27017/videogen
+    networks:
+      - reelgenius-network
     depends_on:
       - redis
       - mongodb
 
   redis:
+    container_name: reelgenius-redis
+    hostname: redis
     image: redis:alpine
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - reelgenius-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -73,11 +100,15 @@ services:
       retries: 5
 
   mongodb:
+    container_name: reelgenius-mongodb
+    hostname: mongodb
     image: mongo:latest
     volumes:
       - mongodb_data:/data/db
     ports:
       - "27017:27017"
+    networks:
+      - reelgenius-network
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -87,3 +118,7 @@ services:
 volumes:
   mongodb_data:
   redis_data:
+
+networks:
+  reelgenius-network:
+    driver: bridge

@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { PlatformsResponse } from '@/lib/api';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import Image from 'next/image';
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(true);
-  const [platformData, setPlatformData] = useState<any>(null);
+  const [platformData, setPlatformData] = useState<PlatformsResponse | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
@@ -140,7 +143,7 @@ export default function Sidebar() {
           {/* Footer */}
           <div className="p-4 text-xs text-muted-foreground border-t border-border">
             <p>ReelGenius AI Video Generator</p>
-            <p className="text-xs mt-1">© 2025</p>
+            <p className="text-xs mt-1">© Ruben Kaiser 2025</p>
           </div>
         </div>
       </aside>

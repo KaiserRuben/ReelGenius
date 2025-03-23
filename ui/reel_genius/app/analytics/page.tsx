@@ -1,4 +1,4 @@
-import { getTasks } from '@/lib/api';
+import { getTasks, TaskStatusResponse } from '@/lib/api';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,7 @@ export default async function AnalyticsPage() {
     creationDates: {} as Record<string, number>
   };
   
-  tasksData.tasks.forEach((task: any) => {
+  tasksData.tasks.forEach((task: TaskStatusResponse) => {
     // Status counts
     if (task.status === 'completed') stats.completed++;
     else if (task.status === 'failed') stats.failed++;
@@ -54,8 +54,8 @@ export default async function AnalyticsPage() {
     }
     
     // Duration
-    if (task.summary?.duration) {
-      stats.totalDuration += task.summary.duration;
+    if (task.result?.metadata?.duration) {
+      stats.totalDuration += task.result.metadata.duration;
     }
     
     // Media sizes

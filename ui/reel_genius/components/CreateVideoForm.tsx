@@ -6,11 +6,8 @@ import { PlatformType } from '@/lib/api';
 import ProgressIndicator from './ProgressIndicator';
 import VideoPlayer from './VideoPlayer';
 
-interface CreateVideoFormProps {
-  platformData: any;
-}
-
-export default function CreateVideoForm({ platformData }: CreateVideoFormProps) {
+// This component uses platformData in the JSX at line 43-63
+export default function CreateVideoForm() {
   const router = useRouter();
   const [content, setContent] = useState('');
   const [platform, setPlatform] = useState<PlatformType>('tiktok');
@@ -37,6 +34,7 @@ export default function CreateVideoForm({ platformData }: CreateVideoFormProps) 
   const [fewShotExamples, setFewShotExamples] = useState(true);
   
   // File upload
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   

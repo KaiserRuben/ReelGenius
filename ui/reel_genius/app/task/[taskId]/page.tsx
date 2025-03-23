@@ -1,4 +1,4 @@
-import { getTaskStatus, getSceneImageUrl, getSceneAudioUrl, getVideoUrl } from '@/lib/api';
+import { getTaskStatus, getSceneImageUrl, getSceneAudioUrl, getVideoUrl, SceneMediaInfo } from '@/lib/api';
 import StatusBadge from '@/components/StatusBadge';
 import ProgressIndicator from '@/components/ProgressIndicator';
 import VideoPlayer from '@/components/VideoPlayer';
@@ -7,12 +7,14 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
+interface PageProps {
+  params: Promise<{ taskId: string }>
+}
+
 export default async function TaskDetailPage({
   params
-}: {
-  params: { taskId: string }
-}) {
-  const { taskId } = params;
+}: PageProps) {
+  const { taskId } = await params;
   
   // Server-side data fetching
   const taskData = await getTaskStatus(taskId).catch((error) => {
@@ -66,7 +68,7 @@ export default async function TaskDetailPage({
   
   if (taskData.status === 'completed' && taskData.result?.processed_scenes) {
     // Add scene images
-    taskData.result.processed_scenes.forEach((scene: any, index: number) => {
+    taskData.result.processed_scenes.forEach((scene: SceneMediaInfo, index: number) => {
       if (scene.image_path) {
         mediaItems.push({
           type: 'image',
@@ -118,14 +120,97 @@ export default async function TaskDetailPage({
                 progress={taskData.progress || 0}
                 status={taskData.status}
                 height={10}
+                showDetailedProgress={true}
+                result={taskData.result}
               />
-              <p className="mt-4 text-sm text-muted-foreground">
-                Task has been running for {
-                  taskData.created_at 
-                    ? `${Math.floor((Date.now() / 1000 - taskData.created_at) / 60)} minutes`
-                    : 'an unknown amount of time'
-                }.
-              </p>
+              
+              <div className="mt-6 flex items-center justify-between text-sm text-muted-foreground">
+                <p>
+                  Task has been running for {
+                    taskData.created_at 
+                      ? `${Math.floor((Date.now() / 1000 - taskData.created_at) / 60)} minutes`
+                      : 'an unknown amount of time'
+                  }.
+                </p>
+                
+                {taskData.result?.execution_time && (
+                  <p>
+                    Estimated completion: {
+                      taskData.progress && taskData.progress > 0.05
+                        ? `${Math.ceil(taskData.result.execution_time * (1 / taskData.progress - 1))} seconds`
+                        : 'Calculating...'
+                    }
+                  </p>
+                )}
+              </div>
+              
+              {/* Live generation updates */}
+              {taskData.status === 'running' && taskData.result && (
+                <div className="mt-4 p-3 bg-muted/50 rounded-md">
+                  <h3 className="text-sm font-medium mb-2">Generation Updates</h3>
+                  
+                  {taskData.progress < 0.25 && taskData.result.input_analysis && (
+                    <div className="text-xs space-y-1">
+                      <p>
+                        <span className="font-medium">Content Topic:</span> {taskData.result.input_analysis.topic || 'Analyzing...'}
+                      </p>
+                      {taskData.result.input_analysis.keywords && (
+                        <p>
+                          <span className="font-medium">Keywords:</span> {taskData.result.input_analysis.keywords.join(', ')}
+                        </p>
+                      )}
+                      {taskData.result.content_strategy && (
+                        <p>
+                          <span className="font-medium">Approach:</span> {taskData.result.content_strategy.tone || 'Standard'} tone for {taskData.result.content_strategy.target_audience || 'general audience'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {taskData.progress >= 0.25 && taskData.progress < 0.5 && taskData.result.script && (
+                    <div className="text-xs space-y-1">
+                      <p>
+                        <span className="font-medium">Script Created:</span> {taskData.result.script.scenes ? `${taskData.result.script.scenes.length} scenes planned` : 'In progress...'}
+                      </p>
+                      {taskData.result.script.title && (
+                        <p>
+                          <span className="font-medium">Title:</span> {taskData.result.script.title}
+                        </p>
+                      )}
+                      {taskData.result.script.hook && (
+                        <p>
+                          <span className="font-medium">Hook:</span> "{taskData.result.script.hook}"
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {taskData.progress >= 0.5 && taskData.progress < 0.75 && taskData.result.processed_scenes && (
+                    <div className="text-xs space-y-1">
+                      <p>
+                        <span className="font-medium">Scene Progress:</span> Generated {taskData.result.processed_scenes.length} of {taskData.result.script?.scenes?.length || '?'} scenes
+                      </p>
+                      {taskData.result.processed_scenes.length > 0 && (
+                        <div className="mt-2">
+                          <span className="font-medium">Latest Scene:</span> 
+                          <p className="italic mt-1">"{taskData.result.processed_scenes[taskData.result.processed_scenes.length - 1].text}"</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {taskData.progress >= 0.75 && (
+                    <div className="text-xs">
+                      <p><span className="font-medium">Finalizing Video:</span> Combining media assets...</p>
+                      {taskData.result.metadata && (
+                        <p className="mt-1">
+                          <span className="font-medium">Estimated Length:</span> {taskData.result.metadata.duration?.toFixed(1) || 'Calculating...'} seconds
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           
