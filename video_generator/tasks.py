@@ -33,6 +33,36 @@ def update_task_status(task_id: str, updates: Dict[str, Any]):
     try:
         updates['updated_at'] = datetime.utcnow()
         
+        # Check for JSON serialization issues
+        if 'result' in updates:
+            try:
+                # Test if result can be serialized to JSON
+                import json
+                json_str = json.dumps(updates['result'])
+                # Log size for troubleshooting
+                result_size = len(json_str)
+                print(f"Task {task_id} result JSON size: {result_size} bytes")
+                
+                # If result is too large, we might need to trim it
+                if result_size > 1000000:  # 1MB limit
+                    print(f"WARNING: Task {task_id} result is very large ({result_size} bytes)")
+                    # Consider trimming large lists or nested data
+            except Exception as json_err:
+                print(f"ERROR: JSON serialization issue with task {task_id}: {json_err}")
+                # Find problematic fields
+                for key, value in updates['result'].items():
+                    try:
+                        json.dumps({key: value})
+                    except:
+                        print(f"Field '{key}' in result is not JSON serializable")
+                        # Remove or simplify problematic fields
+                        if isinstance(value, (list, dict)):
+                            print(f"Simplifying problematic field: {key}")
+                            updates['result'][key] = str(value)[:1000] + "... [truncated]"
+                        else:
+                            print(f"Removing problematic field: {key}")
+                            updates['result'][key] = str(value)[:1000] + "... [truncated]"
+        
         # Get task if it exists
         task = session.query(Task).filter_by(task_id=task_id).first()
         
@@ -47,9 +77,11 @@ def update_task_status(task_id: str, updates: Dict[str, Any]):
             session.add(task)
             
         session.commit()
+        print(f"Successfully updated task {task_id} with status: {updates.get('status', 'unknown')}")
     except Exception as e:
         session.rollback()
         print(f"Error updating task status: {e}")
+        print(f"Task ID: {task_id}, Update keys: {list(updates.keys())}")
         traceback.print_exc()
     finally:
         session.close()
@@ -133,15 +165,30 @@ def generate_video(self, task_id: str, content: str, platform: str,
         result['execution_time'] = execution_time
         result['platform'] = platform
         
+        # Clean up the result to ensure it's serializable
         # Remove progress_callback from result to avoid serialization issues
         if 'progress_callback' in result:
             del result['progress_callback']
-
+            
+        # Create a clean copy of the result for database storage
+        import copy
+        clean_result = copy.deepcopy(result)
+        
+        # Remove any potentially non-serializable objects
+        for key in list(clean_result.keys()):
+            if callable(clean_result[key]):
+                print(f"Removing non-serializable callable: {key}")
+                del clean_result[key]
+                
+        # Check for other problematic data
+        if 'processed_scenes' in clean_result and isinstance(clean_result['processed_scenes'], list):
+            print(f"Number of scenes found: {len(clean_result['processed_scenes'])}")
+            
         # Update task status
         final_status = {
             'status': 'completed' if result.get('success', False) else 'failed',
             'progress': 1.0,
-            'result': result,
+            'result': clean_result,  # Use the cleaned result
             'platform': platform,
             'execution_time': execution_time
         }

@@ -179,7 +179,7 @@ class LLMConfig(BaseModel):
     timeout: int = Field(int(os.environ.get("LLM_TIMEOUT", "120")), description="API timeout in seconds")
     few_shot_examples: bool = Field(True, description="Whether to use few-shot examples")
     chain_of_thought: bool = Field(True, description="Whether to encourage chain of thought reasoning")
-    use_meta_prompting: bool = Field(False, description="Whether to use meta-prompting")
+    use_meta_prompting: bool = Field(True, description="Whether to use meta-prompting")
 
     @field_validator('temperature')
     @classmethod

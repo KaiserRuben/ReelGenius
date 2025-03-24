@@ -141,6 +141,28 @@ The API is available at http://localhost:8000 when running the server. Documenta
 
 ReelGenius can be configured through environment variables and the configuration files in the `video_generator/config` directory.
 
+### Database Schema
+
+ReelGenius uses PostgreSQL for data persistence with the following structure:
+
+#### Primary Tables
+- **users**: User accounts, authentication, and preferences
+- **tasks**: Video generation tasks and their status
+- **video_templates**: Templates for different video formats by platform
+- **media_assets**: Images, audio files, and videos associated with tasks
+- **cache_entries**: Semantic cache for generated content
+- **prompt_templates**: Templates for LLM prompts by type
+- **platform_accounts**: Social media account connections
+- **usage_statistics**: Usage tracking for analytics and billing
+
+#### Relationships
+- A user can have many tasks, platform accounts, and usage statistics
+- A task belongs to a user (optional) and can use a video template
+- A task can have many media assets
+- Templates can be public or associated with specific users
+
+The database is automatically initialized when the containers start, and includes indexes for optimized queries.
+
 ### Health Check System
 
 ReelGenius implements a robust health check system for reliable container orchestration:

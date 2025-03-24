@@ -565,8 +565,15 @@ class PromptTemplateManager:
             1. Adding specific instructions for high-quality outputs
             2. Including constraints to avoid common pitfalls
             3. Structuring it clearly with step-by-step guidance
-            4. Adding few-shot examples where helpful
+            4. Adding few-shot examples where helpful (but create NEW examples, don't copy existing ones)
             5. Incorporating chain-of-thought reasoning
+
+            IMPORTANT: DO NOT simply regurgitate examples from the user content or base prompt. 
+            Create new content specifically designed to optimize the prompt.
+            
+            If the base prompt contains example content like quantum computing examples, DO NOT use these 
+            exact examples in your optimized prompt. Create new examples or scenarios that better illustrate 
+            how to respond to the prompt.
 
             Return ONLY the improved prompt without explanation.
             """,
@@ -931,7 +938,11 @@ class PromptTemplateManager:
 
             data = {
                 "model": config.get('llm', {}).get('model', 'deepseek-chat'),
-                "messages": [{"role": "user", "content": meta_prompt}],
+                "messages": [
+                    # Instruction that ensures the LLM replaces the example instead of using it
+                    {"role": "system", "content": "You are a prompt engineering expert. You always respond with the optimized prompt directly, without using examples from the original prompt as-is."},
+                    {"role": "user", "content": meta_prompt}
+                ],
                 "temperature": 0.7,
             }
 
@@ -949,7 +960,34 @@ class PromptTemplateManager:
 
             result = response.json()
             optimized_prompt = result["choices"][0]["message"]["content"]
+            
+            # Check if the optimized prompt is just the same as the example (a common issue)
+            if "quantum computing" in optimized_prompt and "quantum computing" in prompt_text:
+                # Check for substantial overlap with the quantum computing example
+                quantum_example_snippets = [
+                    "quantum computing uses quantum bits or qubits",
+                    "unlike regular computers that use bits",
+                    "what if i told you computers could be in two states at once",
+                    "unlike classical bits"
+                ]
+                
+                # If too many example snippets are found, it's likely just regurgitating examples
+                matches = sum(1 for snippet in quantum_example_snippets if snippet.lower() in optimized_prompt.lower())
+                if matches >= 2:
+                    logger.warning("Meta-prompting likely returned example content. Using original prompt.")
+                    return prompt_text
+            
+            # Log optimized prompt for debugging if detailed logging is enabled
+            if config.get('enable_detailed_logging', False):
+                logger.info(f"Original prompt:\n{prompt_text}")
+                logger.info(f"Optimized prompt:\n{optimized_prompt}")
 
+            # Extra safeguard: if the optimized prompt is shorter than the original,
+            # it might be returning just a portion or failing to include important details
+            if len(optimized_prompt) < len(prompt_text) * 0.5:
+                logger.warning("Optimized prompt suspiciously short. Using original prompt.")
+                return prompt_text
+                
             return optimized_prompt
         except Exception as e:
             logger.error(f"Meta-prompting failed: {e}")

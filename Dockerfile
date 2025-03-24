@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     libxext6 \
     curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -23,7 +24,12 @@ RUN mkdir -p data/inputs data/history output/videos output/metadata
 # Set environment variables
 ENV PYTHONPATH=/app
 
-# Run the application
-CMD ["uvicorn", "video_generator.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Set up entrypoint script
+RUN chmod +x /app/docker-entrypoint.sh
 
+# Use custom entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+# Default command (will be passed to the entrypoint)
+CMD ["api"]
 

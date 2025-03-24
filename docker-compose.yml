@@ -67,7 +67,7 @@ services:
     container_name: reelgenius-worker
     hostname: worker
     build: .
-    command: celery -A video_generator.tasks worker --loglevel=info
+    command: worker
     volumes:
       - ./data:/app/data
       - ./output:/app/output
@@ -89,6 +89,11 @@ services:
     depends_on:
       - redis
       - postgres
+    healthcheck:
+      test: ["CMD", "celery", "inspect", "ping", "-A", "video_generator.tasks"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   redis:
     container_name: reelgenius-redis
@@ -112,6 +117,7 @@ services:
     image: postgres:latest
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./video_generator/sql:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     environment:

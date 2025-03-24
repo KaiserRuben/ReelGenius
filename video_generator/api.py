@@ -1117,6 +1117,9 @@ async def get_scenes(task_id: str, db: SQLAlchemySession = Depends(get_db)):
 async def cache_stats():
     """Get statistics about the semantic cache."""
     from video_generator.semantic_cache.cache import _cache_manager
+    from video_generator.database import Session, CacheEntry
+    from sqlalchemy import func, desc
+    from datetime import datetime
     
     try:
         # Get Redis info if available
@@ -1128,36 +1131,85 @@ async def cache_stats():
         except Exception as e:
             redis_info = {"error": str(e)}
         
+        # Get database stats
+        session = Session()
+        try:
+            # Count total cache entries
+            total_entries = session.query(func.count(CacheEntry.id)).scalar() or 0
+            
+            # Get total hits
+            total_hits = session.query(func.sum(CacheEntry.hits_count)).scalar() or 0
+            
+            # Get total cost saved
+            total_cost_saved = session.query(func.sum(CacheEntry.cost_saved)).scalar() or 0.0
+            
+            # Get active entries (not expired)
+            active_entries = session.query(func.count(CacheEntry.id)).filter(
+                CacheEntry.expires_at > datetime.utcnow()
+            ).scalar() or 0
+            
+            # Get expired entries
+            expired_entries = session.query(func.count(CacheEntry.id)).filter(
+                CacheEntry.expires_at <= datetime.utcnow()
+            ).scalar() or 0
+            
+            # Get most used cache entries
+            top_hits = session.query(CacheEntry).order_by(
+                desc(CacheEntry.hits_count)
+            ).limit(5).all()
+            
+            top_hits_data = [{
+                "key": entry.key,
+                "hits": entry.hits_count,
+                "cost_saved": round(entry.cost_saved, 4),
+                "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                "content": entry.content[:100] + "..." if entry.content and len(entry.content) > 100 else entry.content
+            } for entry in top_hits]
+            
+            # Get recent cache entries
+            recent_entries = session.query(CacheEntry).order_by(
+                desc(CacheEntry.created_at)
+            ).limit(10).all()
+            
+            recent_entries_data = [{
+                "key": entry.key,
+                "hits": entry.hits_count,
+                "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                "expires_at": entry.expires_at.isoformat() if entry.expires_at else None,
+                "content": entry.content[:100] + "..." if entry.content and len(entry.content) > 100 else entry.content
+            } for entry in recent_entries]
+        finally:
+            session.close()
+        
         # Create summarized stats
         stats = {
             "status": "active",
             "engine": "redis" if redis_info else "in-memory",
-            "embedding_model": _cache_manager.model.get_sentence_embedding_dimension(),
+            "embedding_dimension": _cache_manager.get_sentence_embedding_dimension(),
             "embedding_cache_size": len(_cache_manager._embedding_cache),
             "max_embedding_cache_size": _cache_manager._max_cache_size,
-            "redis_info": redis_info
+            "redis_info": redis_info,
+            "database_stats": {
+                "total_entries": total_entries,
+                "active_entries": active_entries,
+                "expired_entries": expired_entries,
+                "total_hits": total_hits,
+                "total_cost_saved": round(total_cost_saved, 2),
+                "cost_saved_currency": "USD"
+            },
+            "top_hits": top_hits_data,
+            "recent_entries": recent_entries_data
         }
         
-        # Add usage info
-        tasks_data = []
+        # Add legacy file-based stats for backward compatibility
         if os.path.exists("cache_keys.csv"):
-            with open("cache_keys.csv", "r") as f:
-                lines = f.readlines()
-                if lines:
-                    stats["total_cache_entries"] = len(lines)
-                    # Get last 10 entries
-                    recent = lines[-10:] if len(lines) >= 10 else lines
-                    for line in recent:
-                        parts = line.strip().split(",", 4)
-                        if len(parts) >= 5:
-                            tasks_data.append({
-                                "timestamp": parts[0],
-                                "key_prefix": parts[1],
-                                "hash": parts[2],
-                                "similarity_enabled": parts[3].lower() == "true",
-                                "content": parts[4][:100] + "..." if len(parts[4]) > 100 else parts[4]
-                            })
-                    stats["recent_entries"] = tasks_data
+            try:
+                with open("cache_keys.csv", "r") as f:
+                    lines = f.readlines()
+                    if lines:
+                        stats["legacy_file_entries"] = len(lines)
+            except Exception as e:
+                stats["legacy_file_error"] = str(e)
         
         return stats
     except Exception as e:
@@ -1194,7 +1246,7 @@ async def health_check(db: SQLAlchemySession = Depends(get_db)):
             "tts_provider": config.tts.provider
         },
         "semantic_cache": {
-            "status": "enabled"
+            "status": "disabled"
         }
     }
 

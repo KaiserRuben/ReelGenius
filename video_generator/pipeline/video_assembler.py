@@ -252,7 +252,7 @@ class AnimatedSubtitle:
             'method': 'caption',
             'align': 'center',
             'stroke_color': 'black',  # Add stroke for better contrast
-            'stroke_width': 1.5,      # Moderate stroke width
+            'stroke_width': 1.5,  # Moderate stroke width
         }
 
         # Platform specific adjustments with larger fonts
@@ -295,7 +295,7 @@ class AnimatedSubtitle:
             size=(text_width, None),
             bg_color=None,  # No background!
             stroke_color=style.get('stroke_color', 'black'),
-            stroke_width=style.get('stroke_width', 1.5)
+            stroke_width=int(style.get('stroke_width', 1.5))
         )
 
         # Set duration
@@ -307,17 +307,17 @@ class AnimatedSubtitle:
             padding = 20  # Padding around text
             bg_width = txt_clip.size[0] + padding * 2
             bg_height = txt_clip.size[1] + padding * 2
-            
+
             # Create background with black color
             bg_clip = ColorClip(
-                size=(bg_width, bg_height), 
+                size=(bg_width, bg_height),
                 color=(0, 0, 0)  # Black color
             )
-            
+
             # Add opacity using set_opacity
             bg_clip = bg_clip.with_opacity(0.4)  # 40% opacity
             bg_clip = bg_clip.with_duration(duration)
-            
+
             # Composite text on background
             txt_clip = CompositeVideoClip([
                 bg_clip,
@@ -376,6 +376,8 @@ class AnimatedSubtitle:
             clip = VideoEffects.fade_in(clip, anim_in_duration / 2)
             clip = VideoEffects.fade_out(clip, anim_out_duration)
 
+
+
         elif style == 'slide':
             # Slide from bottom with easing
             def slide_pos(t):
@@ -393,22 +395,20 @@ class AnimatedSubtitle:
                     return ('center', offset)
                 else:
                     return ('center', 0)  # Stay in place
-
             # Create a container clip with the right dimensions for the sliding effect
             container_h = clip.h + 120  # Make room for the slide
             container = ColorClip((clip.w, container_h), color=(0, 0, 0, 0))
             container = container.with_duration(duration)
-
-            # Add the sliding subtitle to the container
+            # Add the sliding subtitle to the container with explicit lambda
+            # This is the key fix - ensuring we're properly wrapping the function
+            position_clip = clip.with_position(lambda t: slide_pos(t))
             sliding_clip = CompositeVideoClip([
                 container,
-                clip.with_position(slide_pos)
+                position_clip
             ])
-
             # Also add fade for smoothness
             sliding_clip = VideoEffects.fade_in(sliding_clip, anim_in_duration / 3)
             sliding_clip = VideoEffects.fade_out(sliding_clip, anim_out_duration / 2)
-
             return sliding_clip
 
         elif style == 'typewriter':
@@ -496,15 +496,15 @@ class AnimatedSubtitle:
         # For short-form videos, we want to break at logical points
         # like sentence endings or commas where possible
         chunks = []
-        
+
         # First try to split by sentences
         sentences = []
         for sentence in text.replace('! ', '! SPLIT').replace('? ', '? SPLIT').replace('. ', '. SPLIT').split('SPLIT'):
             sentences.append(sentence.strip())
-        
+
         current_chunk = []
         current_length = 0
-        
+
         # Process each sentence
         for sentence in sentences:
             # If sentence is short enough, add it to the current chunk
@@ -518,12 +518,12 @@ class AnimatedSubtitle:
                     chunks.append(' '.join(current_chunk))
                     current_chunk = []
                     current_length = 0
-                
+
                 # Try to split by clauses (at commas, semicolons, etc.)
                 clauses = []
                 for clause in sentence.replace(', ', ', SPLIT').replace('; ', '; SPLIT').split('SPLIT'):
                     clauses.append(clause.strip())
-                
+
                 for clause in clauses:
                     if len(clause) <= max_chars:
                         chunks.append(clause)
@@ -532,7 +532,7 @@ class AnimatedSubtitle:
                         words = clause.split()
                         clause_chunk = []
                         clause_length = 0
-                        
+
                         for word in words:
                             if clause_length + len(word) + 1 <= max_chars:
                                 clause_chunk.append(word)
@@ -542,7 +542,7 @@ class AnimatedSubtitle:
                                     chunks.append(' '.join(clause_chunk))
                                 clause_chunk = [word]
                                 clause_length = len(word)
-                        
+
                         if clause_chunk:
                             chunks.append(' '.join(clause_chunk))
             else:
@@ -551,11 +551,11 @@ class AnimatedSubtitle:
                     chunks.append(' '.join(current_chunk))
                 current_chunk = [sentence]
                 current_length = len(sentence)
-        
+
         # Add the last chunk if any
         if current_chunk:
             chunks.append(' '.join(current_chunk))
-        
+
         return chunks
 
 
@@ -796,7 +796,7 @@ class VideoAssembler:
             max_chars = 42  # Longer for YouTube
         else:
             max_chars = 50  # Default for other platforms
-            
+
         text_chunks = self.subtitle_generator.chunk_subtitles(text, max_chars)
 
         if not text_chunks:
@@ -901,7 +901,7 @@ class VideoAssembler:
                     hook_duration = hook_audio.duration
 
                     # Use dedicated hook image if available, otherwise fall back to first scene's image
-                    hook_image_path = result.get("hook_image_path")
+                    hook_image_path = state.get("hook_image_path")
                     if not hook_image_path or not os.path.exists(hook_image_path):
                         hook_image_path = valid_scenes[0]["image_path"] if valid_scenes else None
                         logger.info("Using first scene image for hook (dedicated hook image not found)")
