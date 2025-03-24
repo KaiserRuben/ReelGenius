@@ -48,6 +48,13 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    # Improved healthcheck for UI service with fallback mechanisms
+    healthcheck:
+      test: ["CMD", "node", "/app/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     # Add a startup command to test connectivity
     entrypoint: >
       sh -c "

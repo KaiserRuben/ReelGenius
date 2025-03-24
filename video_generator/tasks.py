@@ -110,8 +110,8 @@ def generate_video(self, task_id: str, content: str, platform: str,
         # Run pipeline with progress reporting
         start_time = time.time()
 
-        # Define progress callback
-        def progress_callback(progress_value):
+        # Define progress callback with task_id support
+        def progress_callback(progress_value, task_id=None):
             # Calculate overall progress (20% to 90%)
             overall_progress = 0.2 + (progress_value * 0.7)
             # Create a copy of the progress data without the function itself
@@ -119,11 +119,13 @@ def generate_video(self, task_id: str, content: str, platform: str,
                 'progress': overall_progress,
                 'status': 'running'
             }
-            update_task_status(task_id, progress_data)
+            # Use the provided task_id if it's passed, otherwise use the outer task_id
+            update_task_id = task_id or self.request.id 
+            update_task_status(update_task_id, progress_data)
             self.update_state(state='PROGRESS', meta=progress_data)
 
-        # Run pipeline with progress callback
-        result = task_pipeline.run(content, progress_callback=progress_callback)
+        # Run pipeline with progress callback and task_id
+        result = task_pipeline.run(content, progress_callback=progress_callback, task_id=task_id)
 
         execution_time = time.time() - start_time
 

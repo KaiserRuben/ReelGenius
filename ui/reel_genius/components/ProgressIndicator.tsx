@@ -105,7 +105,7 @@ export default function ProgressIndicator({
     });
     
     setStages(updatedStages);
-  }, [progress, status]);
+  }, [progress, status, stages]);
   
   // Calculate stage-specific progress
   const getCurrentStageProgress = () => {

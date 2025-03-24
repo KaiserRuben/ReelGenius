@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, create_model
+from enum import Enum
+from typing import TypeVar, Generic, Type
 from typing import Optional, Dict, List, Any, Union, Literal
 import os
 import json
@@ -20,6 +22,66 @@ import mimetypes
 from .config import PipelineConfig, PlatformType
 from .tasks import celery_app, generate_video
 from .database import get_session, Task
+from .api_docs import get_documentation
+
+# Define API response status types
+class ResponseStatus(str, Enum):
+    SUCCESS = "success"
+    ERROR = "error"
+    WARNING = "warning"
+
+# Generic type for API response data
+T = TypeVar('T')
+
+# Standard API response model
+class APIResponse(Generic[T]):
+    """Standardized API response model"""
+    def __init__(
+        self, 
+        data: Optional[T] = None, 
+        status: ResponseStatus = ResponseStatus.SUCCESS,
+        message: Optional[str] = None,
+        error: Optional[str] = None,
+        meta: Optional[Dict[str, Any]] = None
+    ):
+        self.data = data
+        self.status = status
+        self.message = message
+        self.error = error
+        self.meta = meta or {}
+        
+    def dict(self):
+        """Convert to dictionary for JSON response"""
+        result = {
+            "status": self.status,
+            "data": self.data
+        }
+        
+        if self.message is not None:
+            result["message"] = self.message
+            
+        if self.error is not None:
+            result["error"] = self.error
+            
+        if self.meta:
+            result["meta"] = self.meta
+            
+        return result
+        
+    @classmethod
+    def success(cls, data: T = None, message: Optional[str] = None, meta: Optional[Dict[str, Any]] = None):
+        """Create a success response"""
+        return cls(data=data, status=ResponseStatus.SUCCESS, message=message, meta=meta)
+        
+    @classmethod
+    def error(cls, error: str, data: T = None, message: Optional[str] = None, meta: Optional[Dict[str, Any]] = None):
+        """Create an error response"""
+        return cls(data=data, status=ResponseStatus.ERROR, message=message, error=error, meta=meta)
+        
+    @classmethod
+    def warning(cls, message: str, data: T = None, meta: Optional[Dict[str, Any]] = None):
+        """Create a warning response"""
+        return cls(data=data, status=ResponseStatus.WARNING, message=message, meta=meta)
 
 app = FastAPI(title="AI Video Generator API")
 
@@ -128,6 +190,21 @@ class TaskStatusResponse(BaseModel):
     created_at: Optional[float] = None
     updated_at: Optional[float] = None
     execution_time: Optional[float] = None
+    
+    class Config:
+        """Config for model serialization"""
+        json_schema_extra = {
+            "example": {
+                "task_id": "123e4567-e89b-12d3-a456-426614174000",
+                "status": "completed",
+                "progress": 1.0,
+                "platform": "tiktok",
+                "content_summary": "How to make a perfect omelet...",
+                "created_at": 1679825000.0,
+                "updated_at": 1679826000.0,
+                "execution_time": 60.5
+            }
+        }
 
 
 # Cleanup function
@@ -187,16 +264,26 @@ async def periodic_cleanup():
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"message": "AI Video Generator API", "status": "running", "version": "1.0.0"}
+    return APIResponse.success(
+        data={
+            "name": "AI Video Generator API",
+            "status": "running", 
+            "version": "1.0.0"
+        },
+        message="API is running normally"
+    ).dict()
 
 
-@app.post("/generate", response_model=VideoGenerationResponse)
+@app.post("/generate")
 async def create_video(request: VideoGenerationRequest, db: SQLAlchemySession = Depends(get_db)):
     """Generate a video from content."""
     try:
         # Validate input
         if not request.content or len(request.content.strip()) < 10:
-            raise HTTPException(status_code=400, detail="Content must be at least 10 characters long")
+            return APIResponse.error(
+                error="Invalid input",
+                message="Content must be at least 10 characters long"
+            ).dict(), 400
 
         # Generate task ID
         task_id = str(uuid.uuid4())
@@ -236,15 +323,33 @@ async def create_video(request: VideoGenerationRequest, db: SQLAlchemySession = 
         db.commit()
 
         logger.info(f"Video generation task queued: {task_id}")
-        return VideoGenerationResponse(
-            task_id=task_id,
-            status="queued",
-            message="Video generation task has been queued"
-        )
+        
+        # Create standard response model
+        response_data = {
+            "task_id": task_id,
+            "status": "queued",
+            "platform": request.platform,
+            "voice_gender": request.voice_gender,
+            "content_length": len(request.content),
+            "created_at": new_task.created_at.timestamp(),
+            "status_url": f"/status/{task_id}"
+        }
+        
+        return APIResponse.success(
+            data=response_data,
+            message="Video generation task has been queued",
+            meta={
+                "estimated_time": "60-120 seconds",
+                "queue_position": 1
+            }
+        ).dict()
     except Exception as e:
         logger.error(f"Error in generate_video: {e}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        return APIResponse.error(
+            error="Internal server error",
+            message=str(e)
+        ).dict(), 500
 
 
 @app.post("/generate-from-file", response_model=VideoGenerationResponse)
@@ -339,14 +444,21 @@ async def generate_video_from_file(
             temp_file.unlink()
 
 
-@app.get("/status/{task_id}", response_model=TaskStatusResponse)
-async def get_task_status(task_id: str, db: SQLAlchemySession = Depends(get_db)):
-    """Get the status of a video generation task."""
+@app.get("/status/{task_id}")
+async def get_task_status(
+    task_id: str, 
+    include_scene_details: bool = Query(False, description="Include detailed scene information"),
+    db: SQLAlchemySession = Depends(get_db)
+):
+    """Get the status of a video generation task with standardized response format."""
     # First check database
     task = db.query(Task).filter_by(task_id=task_id).first()
 
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        return APIResponse.error(
+            error="Not found",
+            message=f"Task with ID {task_id} not found"
+        ).dict(), 404
 
     # Convert to dictionary for easier handling
     task_info = task.to_dict()
@@ -385,98 +497,139 @@ async def get_task_status(task_id: str, db: SQLAlchemySession = Depends(get_db))
                 # Refresh task_info
                 task_info = task.to_dict()
 
-            # Pending and progress states are already updated by the task itself
-
         except Exception as e:
             logger.error(f"Error checking Celery task status: {e}")
             # Continue with current database status
     
-    # Format result data for enhanced response if available
-    result_data = None
+    # Create standard response data structure
+    response_data = {
+        "task_id": task_id,
+        "status": task_info.get("status", "unknown"),
+        "progress": task_info.get("progress", 0.0),
+        "platform": task_info.get("platform"),
+        "content_summary": task_info.get("content_summary"),
+        "created_at": task_info.get("created_at"),
+        "updated_at": task_info.get("updated_at"),
+        "execution_time": task_info.get("execution_time")
+    }
+    
+    # Add URLs for resource access
+    if task.status == "completed":
+        response_data["urls"] = {
+            "video": f"/video/{task_id}",
+            "metadata": f"/metadata/{task_id}",
+            "scenes": f"/scenes/{task_id}"
+        }
+    
+    # Add error info if present
+    if task_info.get("error"):
+        response_data["error"] = task_info.get("error")
+    
+    # Add additional metadata based on task status
+    meta = {}
+    
+    # Format result data for enhanced response if available and requested
     if "result" in task_info and task_info["result"]:
         result = task_info["result"]
         
-        # Extract scene media info if available
-        processed_scenes = []
-        if "processed_scenes" in result:
-            for scene in result.get("processed_scenes", []):
-                # Add file sizes if available
-                image_size = None
-                voice_size = None
-                if scene.get("image_path") and os.path.exists(scene["image_path"]):
-                    image_size = os.path.getsize(scene["image_path"])
-                if scene.get("voice_path") and os.path.exists(scene["voice_path"]):
-                    voice_size = os.path.getsize(scene["voice_path"])
-                
-                processed_scenes.append(SceneMediaInfo(
-                    image_path=scene.get("image_path"),
-                    voice_path=scene.get("voice_path"),
-                    text=scene.get("text"),
-                    duration=scene.get("precise_duration"),
-                    transition=scene.get("transition"),
-                    image_prompt=scene.get("image_prompt"),
-                    visual_description=scene.get("visual_description")
-                ))
+        # Add video info if available
+        if "video_path" in result and task.status == "completed":
+            video_path = result["video_path"]
+            if os.path.exists(video_path):
+                response_data["video"] = {
+                    "path": video_path,
+                    "size_bytes": os.path.getsize(video_path),
+                    "filename": os.path.basename(video_path),
+                    "url": f"/video/{task_id}"
+                }
         
-        # Extract video metadata if available
-        metadata = None
-        if "metadata" in result:
-            meta = result["metadata"]
-            # Add video file size if available
-            file_size = None
-            video_path = result.get("video_path")
-            if video_path and os.path.exists(video_path):
-                file_size = os.path.getsize(video_path)
-                
-            metadata = VideoMetadata(
-                title=meta.get("title"),
-                description=meta.get("description"),
-                hashtags=meta.get("hashtags"),
-                category=meta.get("category"),
-                platform=meta.get("platform"),
-                duration=meta.get("duration") or result.get("duration"),
-                resolution=meta.get("resolution"),
-                framerate=meta.get("framerate", 30),
-                file_size=file_size,
-                metadata_path=meta.get("metadata_path")
-            )
+        # Add metadata info if available
+        if "metadata" in result and task.status == "completed":
+            meta_data = result["metadata"]
+            response_data["metadata"] = {
+                "title": meta_data.get("title"),
+                "description": meta_data.get("description", ""),
+                "hashtags": meta_data.get("hashtags", []),
+                "category": meta_data.get("category", ""),
+                "duration": meta_data.get("duration") or result.get("duration", 0),
+                "resolution": meta_data.get("resolution", ""),
+            }
         
-        # Check for cache statistics
-        cache_stats = None
+        # Add cache statistics if available
         if "cache_stats" in result:
-            cache_stats = CacheStats(
-                hits=result["cache_stats"].get("hits", 0),
-                misses=result["cache_stats"].get("misses", 0),
-                money_saved=result["cache_stats"].get("money_saved", 0.0)
-            )
+            cache_stats = result["cache_stats"]
+            meta["cache_stats"] = {
+                "hits": cache_stats.get("hits", 0),
+                "misses": cache_stats.get("misses", 0),
+                "money_saved": cache_stats.get("money_saved", 0.0)
+            }
+        
+        # Include scene details if requested
+        if include_scene_details and "processed_scenes" in result:
+            scenes_data = []
             
-        # Create comprehensive result object
-        result_data = TaskResult(
-            video_path=result.get("video_path"),
-            metadata=metadata,
-            execution_time=result.get("execution_time") or task_info.get("execution_time"),
-            hook_audio_path=result.get("hook_audio_path"),
-            hook_image_path=result.get("hook_image_path"),
-            processed_scenes=processed_scenes if processed_scenes else None,
-            script=result.get("script"),
-            visual_plan=result.get("visual_plan"),
-            content_analysis=result.get("content_analysis"),
-            cache_stats=cache_stats
-        )
+            for i, scene in enumerate(result.get("processed_scenes", [])):
+                scene_data = {
+                    "index": i,
+                    "text": scene.get("text", ""),
+                    "duration": scene.get("precise_duration", 0),
+                    "transition": scene.get("transition", "fade")
+                }
+                
+                # Add media URLs
+                if scene.get("image_path") and os.path.exists(scene["image_path"]):
+                    scene_data["image_url"] = f"/media/image/{task_id}/{i}"
+                    scene_data["image_size_bytes"] = os.path.getsize(scene["image_path"])
+                
+                if scene.get("voice_path") and os.path.exists(scene["voice_path"]):
+                    scene_data["audio_url"] = f"/media/audio/{task_id}/{i}"
+                    scene_data["audio_size_bytes"] = os.path.getsize(scene["voice_path"])
+                
+                scenes_data.append(scene_data)
+            
+            response_data["scenes"] = scenes_data
+            response_data["scene_count"] = len(scenes_data)
     
-    # Create enhanced response
-    return TaskStatusResponse(
-        task_id=task_id,
-        status=task_info.get("status", "unknown"),
-        progress=task_info.get("progress"),
-        result=result_data,
-        error=task_info.get("error"),
-        platform=task_info.get("platform"),
-        content_summary=task_info.get("content_summary"),
-        created_at=task_info.get("created_at"),
-        updated_at=task_info.get("updated_at"),
-        execution_time=task_info.get("execution_time")
-    )
+    # Add timing estimates for in-progress tasks
+    if task.status == "running":
+        percent_done = task.progress or 0.0
+        if percent_done > 0:
+            elapsed_time = (datetime.utcnow() - task.created_at).total_seconds()
+            estimated_total = elapsed_time / percent_done if percent_done > 0 else 0
+            estimated_remaining = estimated_total - elapsed_time
+            
+            meta["time_estimates"] = {
+                "elapsed_seconds": round(elapsed_time, 1),
+                "estimated_total_seconds": round(estimated_total, 1),
+                "estimated_remaining_seconds": round(estimated_remaining, 1)
+            }
+    
+    # Create appropriate response based on task status
+    if task.status == "failed":
+        return APIResponse.error(
+            error="Task failed",
+            message=task_info.get("error", "Unknown error"),
+            data=response_data,
+            meta=meta
+        ).dict()
+    elif task.status == "queued":
+        return APIResponse.success(
+            data=response_data,
+            message="Task is queued for processing",
+            meta=meta
+        ).dict()
+    elif task.status == "running":
+        return APIResponse.success(
+            data=response_data,
+            message=f"Task is running ({int(task.progress * 100)}% complete)",
+            meta=meta
+        ).dict()
+    else:  # completed
+        return APIResponse.success(
+            data=response_data,
+            message="Task completed successfully",
+            meta=meta
+        ).dict()
 
 
 @app.get("/video/{task_id}")
@@ -1011,11 +1164,21 @@ async def cache_stats():
         return {"status": "error", "error": str(e)}
 
 
+@app.get("/api-docs")
+async def api_documentation():
+    """Get complete API documentation for frontend integration."""
+    docs = get_documentation()
+    
+    return APIResponse.success(
+        data=docs,
+        message="API Documentation for ReelGenius"
+    ).dict()
+
 @app.get("/health")
 async def health_check(db: SQLAlchemySession = Depends(get_db)):
-    """Extended health check endpoint."""
+    """Extended health check endpoint with standardized response format."""
+    system_status = "healthy"
     health_info = {
-        "status": "healthy",
         "api_version": "1.0.0",
         "tasks": {
             "total": db.query(Task).count(),
@@ -1073,10 +1236,38 @@ async def health_check(db: SQLAlchemySession = Depends(get_db)):
         health_info["postgres_error"] = str(e)
 
     # Set overall status
-    if (not api_keys_status or
-            not storage_check or
-            health_info.get("redis_status") != "connected" or
-            health_info.get("postgres_status") != "connected"):
-        health_info["status"] = "degraded"
-
-    return health_info
+    issues = []
+    if not api_keys_status:
+        system_status = "degraded"
+        issues.append("API keys missing or invalid")
+    
+    if not storage_check:
+        system_status = "degraded"
+        issues.append("Storage directories not writable")
+    
+    if health_info.get("redis_status") != "connected":
+        system_status = "degraded"
+        issues.append("Redis connection issues")
+    
+    if health_info.get("postgres_status") != "connected":
+        system_status = "degraded"
+        issues.append("Database connection issues")
+    
+    health_info["system_status"] = system_status
+    
+    # Determine message based on status
+    message = "All systems operational"
+    if system_status == "degraded":
+        message = f"System degraded: {', '.join(issues)}"
+    
+    if system_status == "degraded":
+        return APIResponse.warning(
+            message=message,
+            data=health_info,
+            meta={"issues": issues}
+        ).dict()
+    else:
+        return APIResponse.success(
+            message=message,
+            data=health_info
+        ).dict()

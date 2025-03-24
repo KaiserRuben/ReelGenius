@@ -23,9 +23,12 @@ RUN npm run build
 # Expose port
 EXPOSE 3000
 
+# Make healthcheck script executable
+RUN chmod +x ./healthcheck.js
+
 # Define healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+  CMD node /app/healthcheck.js || exit 1
 
 # Start the application
 CMD ["npm", "start"]

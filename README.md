@@ -11,6 +11,7 @@ ReelGenius is an AI-powered video generation platform that transforms text conte
 - **Asynchronous Processing**: Task queue system for efficient video generation
 - **Modern React UI**: Clean, responsive interface for video creation and management
 - **Semantic Caching**: Intelligent caching with semantic similarity for image generation to reduce API costs
+- **Algorithm Optimization**: Advanced prompting system optimized for 2025 social media algorithms
 
 ## System Architecture
 
@@ -140,6 +141,20 @@ The API is available at http://localhost:8000 when running the server. Documenta
 
 ReelGenius can be configured through environment variables and the configuration files in the `video_generator/config` directory.
 
+### Health Check System
+
+ReelGenius implements a robust health check system for reliable container orchestration:
+
+- **Backend API Health**: Endpoint at `/health` provides detailed system status
+- **UI Health System**: Multi-layered approach with fallback mechanisms:
+  - **App Router**: `/api/health` - Comprehensive health status with backend connectivity  
+  - **Pages Router**: `/api/healthcheck` - Lightweight, reliable health endpoint
+  - **Static File**: `/healthcheck.txt` - Ultimate fallback option
+
+The UI container uses a sophisticated health check script (`healthcheck.js`) that tries all three methods in sequence, ensuring maximum reliability even during startup or when one system is temporarily unavailable.
+
+> **Note**: Following Next.js best practices, we ensure no path conflicts between App Router and Pages Router by using different paths for each (`/api/health` and `/api/healthcheck` respectively).
+
 ### Platform-Specific Configuration
 
 Each platform (TikTok, YouTube Shorts, etc.) has specific settings that control video dimensions, duration, and styling. These can be found in the `config.py` file.
@@ -165,6 +180,20 @@ ReelGenius implements a semantic caching system that dramatically reduces API co
 - **30-Day Persistence**: Cache entries expire after 30 days to maintain freshness
 
 The semantic cache stores embeddings of image generation prompts and retrieves cached results when similar prompts are encountered, significantly reducing the number of API calls to expensive image generation services.
+
+### Algorithm Optimization Framework
+
+ReelGenius features a sophisticated algorithm optimization system for maximizing engagement:
+
+- **Algorithmic Psychology**: Prompting templates designed around psychological engagement triggers
+- **Retention Architecture**: Strategic open-loop design prevents viewer dropoff at key exit points (15%, 35%, 55%, 85%)
+- **Cognitive Pattern Interrupts**: Hook designs engineered to create immediate psychological commitment
+- **Visual Optimization**: Image generation prompts specifically designed for algorithm-favored attributes
+- **Metadata Engineering**: Reverse-engineered metadata structures for maximum algorithmic distribution
+- **Identity Reinforcement**: Content framing that creates powerful sharing impulses through viewer identity alignment
+- **Exit-Prevention**: Specialized techniques to make scrolling away feel psychologically incomplete
+
+The algorithm optimization framework constantly evolves based on the latest research in algorithmic psychology and platform performance metrics.
 
 ## Development
 

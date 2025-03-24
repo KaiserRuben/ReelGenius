@@ -1,9 +1,16 @@
-import { getTaskStatus, getSceneImageUrl, getSceneAudioUrl, getVideoUrl, SceneMediaInfo } from '@/lib/api';
+import { getTaskStatus, getSceneImageUrl, getSceneAudioUrl, getVideoUrl, SceneMediaInfo, TaskData } from '@/lib/api';
+import { extractData } from '@/lib/types';
 import StatusBadge from '@/components/StatusBadge';
-import ProgressIndicator from '@/components/ProgressIndicator';
 import VideoPlayer from '@/components/VideoPlayer';
 import MediaGallery, { MediaItem } from '@/components/MediaGallery';
+import AlgorithmMetricsPanel from '@/components/AlgorithmMetricsPanel';
+import PromptTemplateViewer from '@/components/PromptTemplateViewer';
+import SceneDetailsViewer from '@/components/SceneDetailsViewer';
+import ContentStrategy from '@/components/ContentStrategy';
+import CacheStats from '@/components/CacheStats';
+import TaskProgress from '@/components/TaskProgress';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,19 +23,32 @@ export default async function TaskDetailPage({
 }: PageProps) {
   const { taskId } = await params;
   
-  // Server-side data fetching
-  const taskData = await getTaskStatus(taskId).catch((error) => {
+  // Server-side data fetching with new standardized response format
+  const response = await getTaskStatus(taskId, true).catch((error) => {
     console.error('Error fetching task:', error);
     return null;
   });
   
-  if (!taskData) {
+  if (!response) {
+    notFound();
+  }
+  
+  // Extract the task data from our standardized response
+  let taskData: TaskData;
+  try {
+    const extractedData = extractData(response);
+    if (!extractedData) {
+      notFound();
+    }
+    taskData = extractedData as TaskData;
+  } catch (error) {
+    console.error('Error processing task data:', error);
     return (
       <div className="max-w-5xl mx-auto">
-        <div className="card p-6">
-          <h1 className="text-3xl font-bold mb-2">Task Not Found</h1>
+        <div className="card p-6 border-destructive">
+          <h1 className="text-3xl font-bold mb-2">Error Loading Task</h1>
           <p className="text-muted-foreground mb-4">
-            The task with ID {taskId} could not be found or has been deleted.
+            {response.error || "Failed to load task data"}
           </p>
           <Link href="/history" className="button-primary inline-block">
             Back to History
@@ -66,30 +86,53 @@ export default async function TaskDetailPage({
   // Prepare media items for gallery if video is completed
   const mediaItems: MediaItem[] = [];
   
-  if (taskData.status === 'completed' && taskData.result?.processed_scenes) {
-    // Add scene images
-    taskData.result.processed_scenes.forEach((scene: SceneMediaInfo, index: number) => {
-      if (scene.image_path) {
+  if (taskData.status === 'completed' && taskData.result?.scenes) {
+    // Add scene images and audio from the new data structure
+    taskData.result.scenes.forEach((scene: SceneMediaInfo, index: number) => {
+      if (scene.image_url) {
         mediaItems.push({
           type: 'image',
-          url: getSceneImageUrl(taskId, index),
+          url: scene.image_url,
           title: `Scene ${index + 1} Image`,
-          index
+          index,
+        });
+      } else if (scene.index !== undefined) {
+        // Fall back to generated URL if direct URL not provided
+        mediaItems.push({
+          type: 'image',
+          url: getSceneImageUrl(taskId, scene.index),
+          title: `Scene ${index + 1} Image`,
+          index: scene.index
         });
       }
       
-      if (scene.voice_path) {
+      if (scene.audio_url) {
         mediaItems.push({
           type: 'audio',
-          url: getSceneAudioUrl(taskId, index),
+          url: scene.audio_url,
+          title: `Scene ${index + 1} Audio`,
+          index: mediaItems.length,
+        });
+      } else if (scene.index !== undefined) {
+        // Fall back to generated URL if direct URL not provided
+        mediaItems.push({
+          type: 'audio',
+          url: getSceneAudioUrl(taskId, scene.index),
           title: `Scene ${index + 1} Audio`,
           index: mediaItems.length
         });
       }
     });
     
-    // Add hook audio if available
-    if (taskData.result.hook_audio_path) {
+    // Add hook audio if available (falling back to traditional path if needed)
+    if (taskData.result.hook_audio_url) {
+      mediaItems.push({
+        type: 'audio',
+        url: taskData.result.hook_audio_url,
+        title: 'Hook Audio',
+        index: mediaItems.length
+      });
+    } else if (taskData.result.hook_audio_path) {
       mediaItems.push({
         type: 'audio',
         url: getSceneAudioUrl(taskId, 'hook'),
@@ -102,10 +145,15 @@ export default async function TaskDetailPage({
   return (
     <div className="max-w-6xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Task Details</h1>
+        <h1 className="text-3xl font-bold mb-2">Video Task Details</h1>
         <div className="flex items-center gap-3">
           <p className="text-muted-foreground">Task ID: {taskId}</p>
           <StatusBadge status={taskData.status} size="md" />
+          {taskData.result?.cache_stats?.money_saved > 0 && (
+            <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-1 rounded-full">
+              Saved ${taskData.result.cache_stats.money_saved.toFixed(2)}
+            </span>
+          )}
         </div>
       </div>
       
@@ -116,122 +164,35 @@ export default async function TaskDetailPage({
           {(taskData.status === 'running' || taskData.status === 'queued') && (
             <div className="card p-6">
               <h2 className="text-lg font-medium mb-4">Generation Progress</h2>
-              <ProgressIndicator
-                progress={taskData.progress || 0}
-                status={taskData.status}
-                height={10}
-                showDetailedProgress={true}
-                result={taskData.result}
-              />
               
-              <div className="mt-6 flex items-center justify-between text-sm text-muted-foreground">
-                <p>
-                  Task has been running for {
-                    taskData.created_at 
-                      ? `${Math.floor((Date.now() / 1000 - taskData.created_at) / 60)} minutes`
-                      : 'an unknown amount of time'
-                  }.
-                </p>
-                
-                {taskData.result?.execution_time && (
-                  <p>
-                    Estimated completion: {
-                      taskData.progress && taskData.progress > 0.05
-                        ? `${Math.ceil(taskData.result.execution_time * (1 / taskData.progress - 1))} seconds`
-                        : 'Calculating...'
-                    }
-                  </p>
-                )}
-              </div>
-              
-              {/* Live generation updates */}
-              {taskData.status === 'running' && taskData.result && (
-                <div className="mt-4 p-3 bg-muted/50 rounded-md">
-                  <h3 className="text-sm font-medium mb-2">Generation Updates</h3>
-                  
-                  {taskData.progress < 0.25 && taskData.result.input_analysis && (
-                    <div className="text-xs space-y-1">
-                      <p>
-                        <span className="font-medium">Content Topic:</span> {taskData.result.input_analysis.topic || 'Analyzing...'}
-                      </p>
-                      {taskData.result.input_analysis.keywords && (
-                        <p>
-                          <span className="font-medium">Keywords:</span> {taskData.result.input_analysis.keywords.join(', ')}
-                        </p>
-                      )}
-                      {taskData.result.content_strategy && (
-                        <p>
-                          <span className="font-medium">Approach:</span> {taskData.result.content_strategy.tone || 'Standard'} tone for {taskData.result.content_strategy.target_audience || 'general audience'}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  
-                  {taskData.progress >= 0.25 && taskData.progress < 0.5 && taskData.result.script && (
-                    <div className="text-xs space-y-1">
-                      <p>
-                        <span className="font-medium">Script Created:</span> {taskData.result.script.scenes ? `${taskData.result.script.scenes.length} scenes planned` : 'In progress...'}
-                      </p>
-                      {taskData.result.script.title && (
-                        <p>
-                          <span className="font-medium">Title:</span> {taskData.result.script.title}
-                        </p>
-                      )}
-                      {taskData.result.script.hook && (
-                        <p>
-                          <span className="font-medium">Hook:</span> "{taskData.result.script.hook}"
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  
-                  {taskData.progress >= 0.5 && taskData.progress < 0.75 && taskData.result.processed_scenes && (
-                    <div className="text-xs space-y-1">
-                      <p>
-                        <span className="font-medium">Scene Progress:</span> Generated {taskData.result.processed_scenes.length} of {taskData.result.script?.scenes?.length || '?'} scenes
-                      </p>
-                      {taskData.result.processed_scenes.length > 0 && (
-                        <div className="mt-2">
-                          <span className="font-medium">Latest Scene:</span> 
-                          <p className="italic mt-1">"{taskData.result.processed_scenes[taskData.result.processed_scenes.length - 1].text}"</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {taskData.progress >= 0.75 && (
-                    <div className="text-xs">
-                      <p><span className="font-medium">Finalizing Video:</span> Combining media assets...</p>
-                      {taskData.result.metadata && (
-                        <p className="mt-1">
-                          <span className="font-medium">Estimated Length:</span> {taskData.result.metadata.duration?.toFixed(1) || 'Calculating...'} seconds
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+              <TaskProgress taskData={taskData} />
             </div>
           )}
           
           {/* Video player for completed videos */}
-          {taskData.status === 'completed' && taskData.result?.video_path && (
+          {taskData.status === 'completed' && (taskData.result?.video_url || taskData.result?.video_file) && (
             <div className="card p-6">
               <h2 className="text-lg font-medium mb-4">Generated Video</h2>
               <VideoPlayer 
-                src={getVideoUrl(taskId)}
+                src={taskData.result.video_url || taskData.result.video_file?.url || getVideoUrl(taskId)}
                 title={taskData.result.metadata?.title || 'Generated Video'}
               />
               
               <div className="mt-4 flex justify-center">
                 <a
-                  href={getVideoUrl(taskId)}
+                  href={taskData.result.video_url || taskData.result.video_file?.url || getVideoUrl(taskId)}
                   download
                   className="button-primary"
                 >
                   Download Video
                 </a>
               </div>
+              
+              {taskData.result.video_file?.size_bytes && (
+                <div className="mt-2 text-sm text-center text-muted-foreground">
+                  File size: {formatFileSize(taskData.result.video_file.size_bytes)}
+                </div>
+              )}
             </div>
           )}
           
@@ -240,6 +201,17 @@ export default async function TaskDetailPage({
             <div className="card p-6">
               <h2 className="text-lg font-medium mb-4">Media Gallery</h2>
               <MediaGallery items={mediaItems} taskId={taskId} />
+            </div>
+          )}
+          
+          {/* Scene Details Viewer */}
+          {taskData.status === 'completed' && taskData.result?.scenes && (
+            <div className="card p-6">
+              <h2 className="text-lg font-medium mb-4">Scene Details</h2>
+              <SceneDetailsViewer 
+                scenes={taskData.result.scenes} 
+                showPrompts={true} 
+              />
             </div>
           )}
           
@@ -288,6 +260,42 @@ export default async function TaskDetailPage({
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          
+          {/* Algorithm Optimization Metrics */}
+          {taskData.status === 'completed' && taskData.result?.algorithm_metrics && (
+            <div className="card p-6">
+              <h2 className="text-lg font-medium mb-4">Algorithm Optimization Metrics</h2>
+              <AlgorithmMetricsPanel data={taskData.result} />
+            </div>
+          )}
+          
+          {/* Content Strategy & Analysis */}
+          {taskData.status === 'completed' && (taskData.result?.content_strategy || taskData.result?.content_analysis || taskData.result?.visual_plan) && (
+            <div className="card p-6">
+              <h2 className="text-lg font-medium mb-4">Content Strategy</h2>
+              <ContentStrategy 
+                contentStrategy={taskData.result?.content_strategy}
+                contentAnalysis={taskData.result?.content_analysis}
+                visualPlan={taskData.result?.visual_plan}
+              />
+            </div>
+          )}
+          
+          {/* Cache Statistics */}
+          {taskData.status === 'completed' && taskData.result?.cache_stats && (
+            <div className="card p-6">
+              <h2 className="text-lg font-medium mb-4">Cache Performance</h2>
+              <CacheStats cacheStats={taskData.result.cache_stats} />
+            </div>
+          )}
+          
+          {/* Prompt Templates Viewer */}
+          {taskData.status === 'completed' && taskData.result?.prompt_templates && (
+            <div className="card p-6">
+              <h2 className="text-lg font-medium mb-4">Prompt Templates</h2>
+              <PromptTemplateViewer templates={taskData.result.prompt_templates} />
             </div>
           )}
           
@@ -342,21 +350,21 @@ export default async function TaskDetailPage({
           </div>
           
           {/* Video details */}
-          {taskData.status === 'completed' && taskData.result?.video_path && (
+          {taskData.status === 'completed' && taskData.result && (
             <div className="card p-6">
               <h2 className="text-lg font-medium mb-4">Video Details</h2>
               <div className="space-y-3">
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-1">File Size</h3>
                   <p className="text-sm">
-                    {formatFileSize(taskData.result.metadata?.file_size)}
+                    {formatFileSize(taskData.result.video_file?.size_bytes || taskData.result.metadata?.file_size)}
                   </p>
                 </div>
                 
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-1">Scene Count</h3>
                   <p className="text-sm">
-                    {taskData.result.processed_scenes?.length || 0} scenes
+                    {taskData.result.scene_count || taskData.result.scenes?.length || 0} scenes
                   </p>
                 </div>
                 
@@ -370,9 +378,18 @@ export default async function TaskDetailPage({
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-1">Has Hook</h3>
                   <p className="text-sm">
-                    {taskData.result.hook_audio_path ? 'Yes' : 'No'}
+                    {taskData.result.hook_audio_url || taskData.result.hook_audio_path ? 'Yes' : 'No'}
                   </p>
                 </div>
+                
+                {taskData.execution_time && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Generation Time</h3>
+                    <p className="text-sm">
+                      {Math.round(taskData.execution_time)} seconds
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -398,9 +415,9 @@ export default async function TaskDetailPage({
                 Back to History
               </Link>
               
-              {taskData.status === 'completed' && taskData.result?.video_path && (
+              {taskData.status === 'completed' && (taskData.result?.video_url || taskData.result?.video_file) && (
                 <a
-                  href={getVideoUrl(taskId)}
+                  href={taskData.result.video_url || taskData.result.video_file?.url || getVideoUrl(taskId)}
                   download
                   className="button-primary w-full flex justify-center"
                 >

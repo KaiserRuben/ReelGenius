@@ -1,0 +1,3336 @@
+
+        <html>
+        <head>
+            <title>Embedding Model Analysis</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                :root {
+                    --primary-color: #0066cc;
+                    --secondary-color: #f8f9fa;
+                    --border-color: #e5e5e7;
+                    --text-color: #1d1d1f;
+                    --radius: 12px;
+                }
+                
+                body { 
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                    background: #f5f5f7;
+                    color: var(--text-color);
+                }
+                
+                .container {
+                    max-width: 1400px;
+                    margin: 0 auto;
+                    padding: 2rem;
+                }
+                
+                .header {
+                    background: white;
+                    padding: 2rem;
+                    border-radius: var(--radius);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                    margin-bottom: 2rem;
+                }
+                
+                .header h1 {
+                    margin: 0 0 1rem 0;
+                    font-weight: 600;
+                    font-size: 2rem;
+                    color: var(--text-color);
+                }
+                
+                .model-tags {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 0.5rem;
+                    margin-top: 1rem;
+                }
+                
+                .model-tag {
+                    background: var(--secondary-color);
+                    padding: 0.5rem 1rem;
+                    border-radius: 20px;
+                    font-size: 0.9rem;
+                    color: var(--text-color);
+                }
+                
+                .overview-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                    gap: 1.5rem;
+                    margin-bottom: 2rem;
+                }
+                
+                .stats-card {
+                    background: white;
+                    padding: 1.5rem;
+                    border-radius: var(--radius);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                }
+                
+                .category-section {
+                    background: white;
+                    border-radius: var(--radius);
+                    padding: 2rem;
+                    margin-bottom: 2rem;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                }
+                
+                .category-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 1.5rem;
+                    padding-bottom: 1rem;
+                    border-bottom: 1px solid var(--border-color);
+                }
+                
+                .gallery-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 1.5rem;
+                    margin-bottom: 2rem;
+                }
+                
+                @media (max-width: 768px) {
+                    .gallery-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+                
+                .gallery-card {
+                    background: var(--secondary-color);
+                    border-radius: var(--radius);
+                    overflow: hidden;
+                    transition: transform 0.2s;
+                }
+                
+                .gallery-card:hover {
+                    transform: translateY(-3px);
+                }
+                
+                .gallery-content {
+                    padding: 1.5rem;
+                }
+                
+                .view-button {
+                    display: inline-block;
+                    background: var(--primary-color);
+                    color: white;
+                    text-decoration: none;
+                    padding: 0.8rem 1.5rem;
+                    border-radius: 25px;
+                    font-weight: 500;
+                    transition: background-color 0.2s;
+                }
+                
+                .view-button:hover {
+                    background: #0077ed;
+                }
+                
+                .threshold-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                    gap: 1rem;
+                    margin-top: 1.5rem;
+                    padding: 1.5rem;
+                    background: var(--secondary-color);
+                    border-radius: var(--radius);
+                }
+                
+                .threshold-link {
+                    display: block;
+                    padding: 0.5rem;
+                    text-align: center;
+                    background: white;
+                    border-radius: 6px;
+                    color: var(--text-color);
+                    text-decoration: none;
+                    font-size: 0.9rem;
+                    transition: background-color 0.2s;
+                }
+                
+                .threshold-link:hover {
+                    background: #e9ecef;
+                }
+                
+                .section-title {
+                    font-size: 1.1rem;
+                    font-weight: 500;
+                    margin: 1rem 0;
+                    color: #666;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Embedding Model Analysis</h1>
+                    <div class="model-tags">
+                        <span class="model-tag">all-MiniLM-L6-v2</span>
+                        <span class="model-tag">all-mpnet-base-v2</span>
+                        <span class="model-tag">multi-qa-mpnet-base-dot-v1</span>
+                        <span class="model-tag">all-distilroberta-v1</span>
+                        <span class="model-tag">multilingual-e5-large-instruct</span>
+                    </div>
+                </div>
+
+                <div class="overview-grid">
+                    <div class="stats-card">
+                        <h3>📊 Analysis Overview</h3>
+                        <p>Categories analyzed: 7</p>
+                        <p>Total texts analyzed: 40</p>
+                        <p>Similarity thresholds: 0.50 - 0.95 (step: 0.05)</p>
+                    </div>
+                    <div class="stats-card">
+                        <h3>🎯 Visualization Types</h3>
+                        <ul>
+                            <li>Gallery View: Evolution across thresholds</li>
+                            <li>Individual Threshold Views: Detailed analysis</li>
+                            <li>Heatmaps: Pairwise similarity analysis</li>
+                        </ul>
+                    </div>
+                </div>
+        
+                <div class="category-section">
+                    <div class="category-header">
+                        <h2>classify_message</h2>
+                        <div>6 texts analyzed</div>
+                    </div>
+
+                    <div class="gallery-grid">
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Cluster Evolution Gallery</h3>
+                                <p>Compare how clusters evolve across different similarity thresholds (0.50 - 0.95)</p>
+                                <a href="output/cluster_gallery_classify_message.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Heatmap Gallery</h3>
+                                <p>Analyze pairwise similarities between texts across different models</p>
+                                <a href="output/heatmap_gallery_classify_message.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+            
+        <div class="gallery-card">
+            <div class="gallery-content">
+                <h3>Interactive Threshold Explorer</h3>
+                <p>Explore how text relationships evolve as similarity threshold changes:</p>
+                <ul>
+                    <li>Use the slider to adjust threshold (0.50 - 0.95)</li>
+                    <li>Watch points and connections update in real-time</li>
+                    <li>Play animation to see smooth transitions</li>
+                    <li>Hover over points to see text content</li>
+                </ul>
+                <a href="output/interactive_clusters_classify_message.html" class="view-button">Launch Interactive View</a>
+            </div>
+        </div>
+                    </div>
+
+                    <div class="section-title">Individual Threshold Views</div>
+                    <div class="threshold-grid">
+    
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    <a href="output/cluster_visualization_classify_message_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_classify_message_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    </div>
+                </div>
+            
+                <div class="category-section">
+                    <div class="category-header">
+                        <h2>extract_chart</h2>
+                        <div>5 texts analyzed</div>
+                    </div>
+
+                    <div class="gallery-grid">
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Cluster Evolution Gallery</h3>
+                                <p>Compare how clusters evolve across different similarity thresholds (0.50 - 0.95)</p>
+                                <a href="output/cluster_gallery_extract_chart.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Heatmap Gallery</h3>
+                                <p>Analyze pairwise similarities between texts across different models</p>
+                                <a href="output/heatmap_gallery_extract_chart.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+            
+        <div class="gallery-card">
+            <div class="gallery-content">
+                <h3>Interactive Threshold Explorer</h3>
+                <p>Explore how text relationships evolve as similarity threshold changes:</p>
+                <ul>
+                    <li>Use the slider to adjust threshold (0.50 - 0.95)</li>
+                    <li>Watch points and connections update in real-time</li>
+                    <li>Play animation to see smooth transitions</li>
+                    <li>Hover over points to see text content</li>
+                </ul>
+                <a href="output/interactive_clusters_extract_chart.html" class="view-button">Launch Interactive View</a>
+            </div>
+        </div>
+                    </div>
+
+                    <div class="section-title">Individual Threshold Views</div>
+                    <div class="threshold-grid">
+    
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_chart_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_extract_chart_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    </div>
+                </div>
+            
+                <div class="category-section">
+                    <div class="category-header">
+                        <h2>extract_symbol</h2>
+                        <div>5 texts analyzed</div>
+                    </div>
+
+                    <div class="gallery-grid">
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Cluster Evolution Gallery</h3>
+                                <p>Compare how clusters evolve across different similarity thresholds (0.50 - 0.95)</p>
+                                <a href="output/cluster_gallery_extract_symbol.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Heatmap Gallery</h3>
+                                <p>Analyze pairwise similarities between texts across different models</p>
+                                <a href="output/heatmap_gallery_extract_symbol.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+            
+        <div class="gallery-card">
+            <div class="gallery-content">
+                <h3>Interactive Threshold Explorer</h3>
+                <p>Explore how text relationships evolve as similarity threshold changes:</p>
+                <ul>
+                    <li>Use the slider to adjust threshold (0.50 - 0.95)</li>
+                    <li>Watch points and connections update in real-time</li>
+                    <li>Play animation to see smooth transitions</li>
+                    <li>Hover over points to see text content</li>
+                </ul>
+                <a href="output/interactive_clusters_extract_symbol.html" class="view-button">Launch Interactive View</a>
+            </div>
+        </div>
+                    </div>
+
+                    <div class="section-title">Individual Threshold Views</div>
+                    <div class="threshold-grid">
+    
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    <a href="output/cluster_visualization_extract_symbol_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_extract_symbol_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    </div>
+                </div>
+            
+                <div class="category-section">
+                    <div class="category-header">
+                        <h2>research_plan</h2>
+                        <div>5 texts analyzed</div>
+                    </div>
+
+                    <div class="gallery-grid">
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Cluster Evolution Gallery</h3>
+                                <p>Compare how clusters evolve across different similarity thresholds (0.50 - 0.95)</p>
+                                <a href="output/cluster_gallery_research_plan.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Heatmap Gallery</h3>
+                                <p>Analyze pairwise similarities between texts across different models</p>
+                                <a href="output/heatmap_gallery_research_plan.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+            
+        <div class="gallery-card">
+            <div class="gallery-content">
+                <h3>Interactive Threshold Explorer</h3>
+                <p>Explore how text relationships evolve as similarity threshold changes:</p>
+                <ul>
+                    <li>Use the slider to adjust threshold (0.50 - 0.95)</li>
+                    <li>Watch points and connections update in real-time</li>
+                    <li>Play animation to see smooth transitions</li>
+                    <li>Hover over points to see text content</li>
+                </ul>
+                <a href="output/interactive_clusters_research_plan.html" class="view-button">Launch Interactive View</a>
+            </div>
+        </div>
+                    </div>
+
+                    <div class="section-title">Individual Threshold Views</div>
+                    <div class="threshold-grid">
+    
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    <a href="output/cluster_visualization_research_plan_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_research_plan_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    </div>
+                </div>
+            
+                <div class="category-section">
+                    <div class="category-header">
+                        <h2>search</h2>
+                        <div>11 texts analyzed</div>
+                    </div>
+
+                    <div class="gallery-grid">
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Cluster Evolution Gallery</h3>
+                                <p>Compare how clusters evolve across different similarity thresholds (0.50 - 0.95)</p>
+                                <a href="output/cluster_gallery_search.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Heatmap Gallery</h3>
+                                <p>Analyze pairwise similarities between texts across different models</p>
+                                <a href="output/heatmap_gallery_search.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+            
+        <div class="gallery-card">
+            <div class="gallery-content">
+                <h3>Interactive Threshold Explorer</h3>
+                <p>Explore how text relationships evolve as similarity threshold changes:</p>
+                <ul>
+                    <li>Use the slider to adjust threshold (0.50 - 0.95)</li>
+                    <li>Watch points and connections update in real-time</li>
+                    <li>Play animation to see smooth transitions</li>
+                    <li>Hover over points to see text content</li>
+                </ul>
+                <a href="output/interactive_clusters_search.html" class="view-button">Launch Interactive View</a>
+            </div>
+        </div>
+                    </div>
+
+                    <div class="section-title">Individual Threshold Views</div>
+                    <div class="threshold-grid">
+    
+                    <a href="output/cluster_visualization_search_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    <a href="output/cluster_visualization_search_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_search_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    </div>
+                </div>
+            
+                <div class="category-section">
+                    <div class="category-header">
+                        <h2>title</h2>
+                        <div>3 texts analyzed</div>
+                    </div>
+
+                    <div class="gallery-grid">
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Cluster Evolution Gallery</h3>
+                                <p>Compare how clusters evolve across different similarity thresholds (0.50 - 0.95)</p>
+                                <a href="output/cluster_gallery_title.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Heatmap Gallery</h3>
+                                <p>Analyze pairwise similarities between texts across different models</p>
+                                <a href="output/heatmap_gallery_title.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+            
+        <div class="gallery-card">
+            <div class="gallery-content">
+                <h3>Interactive Threshold Explorer</h3>
+                <p>Explore how text relationships evolve as similarity threshold changes:</p>
+                <ul>
+                    <li>Use the slider to adjust threshold (0.50 - 0.95)</li>
+                    <li>Watch points and connections update in real-time</li>
+                    <li>Play animation to see smooth transitions</li>
+                    <li>Hover over points to see text content</li>
+                </ul>
+                <a href="output/interactive_clusters_title.html" class="view-button">Launch Interactive View</a>
+            </div>
+        </div>
+                    </div>
+
+                    <div class="section-title">Individual Threshold Views</div>
+                    <div class="threshold-grid">
+    
+                    <a href="output/cluster_visualization_title_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    <a href="output/cluster_visualization_title_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_title_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    </div>
+                </div>
+            
+                <div class="category-section">
+                    <div class="category-header">
+                        <h2>tool_selector</h2>
+                        <div>5 texts analyzed</div>
+                    </div>
+
+                    <div class="gallery-grid">
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Cluster Evolution Gallery</h3>
+                                <p>Compare how clusters evolve across different similarity thresholds (0.50 - 0.95)</p>
+                                <a href="output/cluster_gallery_tool_selector.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+                        <div class="gallery-card">
+                            <div class="gallery-content">
+                                <h3>Heatmap Gallery</h3>
+                                <p>Analyze pairwise similarities between texts across different models</p>
+                                <a href="output/heatmap_gallery_tool_selector.html" class="view-button">View Gallery</a>
+                            </div>
+                        </div>
+            
+        <div class="gallery-card">
+            <div class="gallery-content">
+                <h3>Interactive Threshold Explorer</h3>
+                <p>Explore how text relationships evolve as similarity threshold changes:</p>
+                <ul>
+                    <li>Use the slider to adjust threshold (0.50 - 0.95)</li>
+                    <li>Watch points and connections update in real-time</li>
+                    <li>Play animation to see smooth transitions</li>
+                    <li>Hover over points to see text content</li>
+                </ul>
+                <a href="output/interactive_clusters_tool_selector.html" class="view-button">Launch Interactive View</a>
+            </div>
+        </div>
+                    </div>
+
+                    <div class="section-title">Individual Threshold Views</div>
+                    <div class="threshold-grid">
+    
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.1.html" 
+                       class="threshold-link">
+                        Clusters 0.1
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.1.html"
+                       class="threshold-link">
+                        Heatmap 0.1
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.2.html" 
+                       class="threshold-link">
+                        Clusters 0.2
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.2.html"
+                       class="threshold-link">
+                        Heatmap 0.2
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.3.html" 
+                       class="threshold-link">
+                        Clusters 0.3
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.3.html"
+                       class="threshold-link">
+                        Heatmap 0.3
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.4.html" 
+                       class="threshold-link">
+                        Clusters 0.4
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.4.html"
+                       class="threshold-link">
+                        Heatmap 0.4
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.5.html" 
+                       class="threshold-link">
+                        Clusters 0.5
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.5.html"
+                       class="threshold-link">
+                        Heatmap 0.5
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.6.html" 
+                       class="threshold-link">
+                        Clusters 0.6
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.6.html"
+                       class="threshold-link">
+                        Heatmap 0.6
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.7.html" 
+                       class="threshold-link">
+                        Clusters 0.7
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.7.html"
+                       class="threshold-link">
+                        Heatmap 0.7
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.8.html" 
+                       class="threshold-link">
+                        Clusters 0.8
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.8.html"
+                       class="threshold-link">
+                        Heatmap 0.8
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_0.9.html" 
+                       class="threshold-link">
+                        Clusters 0.9
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_0.9.html"
+                       class="threshold-link">
+                        Heatmap 0.9
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    <a href="output/cluster_visualization_tool_selector_cutoff_1.0.html" 
+                       class="threshold-link">
+                        Clusters 1.0
+                    </a>
+                    <a href="output/heatmap_visualization_tool_selector_cutoff_1.0.html"
+                       class="threshold-link">
+                        Heatmap 1.0
+                    </a>
+                
+                    </div>
+                </div>
+            
+            </div>
+        </body>
+        </html>
+        

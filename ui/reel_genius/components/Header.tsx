@@ -71,7 +71,7 @@ export default function Header() {
             {pathname === '/' && 'Generate Video'}
             {pathname === '/history' && 'Video History'}
             {pathname === '/analytics' && 'Analytics'}
-            {pathname.startsWith('/task/') && 'Task Details'}
+            {pathname?.startsWith('/task/') && 'Task Details'}
           </h1>
         </div>
         

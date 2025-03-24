@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { PlatformType } from '@/lib/api';
+import { PlatformType, getVideoUrl, TaskData } from '@/lib/api';
+import { StandardResponse, extractData, hasError, extractError } from '@/lib/types';
 import ProgressIndicator from './ProgressIndicator';
 import VideoPlayer from './VideoPlayer';
 
@@ -32,6 +33,18 @@ export default function CreateVideoForm() {
   const [useMetaPrompting, setUseMetaPrompting] = useState(true);
   const [chainOfThought, setChainOfThought] = useState(true);
   const [fewShotExamples, setFewShotExamples] = useState(true);
+  const [enableCache, setEnableCache] = useState(true);
+  
+  // Hook settings
+  const [customHook, setCustomHook] = useState('');
+  const [useCustomHook, setUseCustomHook] = useState(false);
+  
+  // Algorithm optimization settings
+  const [algorithmOptimization, setAlgorithmOptimization] = useState(true);
+  const [algorithmMode, setAlgorithmMode] = useState<'balanced' | 'maximum' | 'authentic'>('balanced');
+  const [includePromptTemplates, setIncludePromptTemplates] = useState(true);
+  const [includeAlgorithmMetrics, setIncludeAlgorithmMetrics] = useState(true);
+  const [includeContentStrategy, setIncludeContentStrategy] = useState(true);
   
   // File upload
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -82,20 +95,38 @@ While still in early stages, quantum computing promises to revolutionize computi
         const response = await fetch(`/api/status/${id}`);
         if (!response.ok) throw new Error('Failed to fetch status');
         
-        const data = await response.json();
-        setTaskStatus(data.status);
-        setTaskProgress(data.progress || 0);
+        const apiResponse: StandardResponse<TaskData> = await response.json();
+        
+        // Check if it's an error response
+        if (hasError(apiResponse)) {
+          clearInterval(interval);
+          setError(extractError(apiResponse));
+          return;
+        }
+        
+        // Extract the task data
+        const taskData = extractData(apiResponse);
+        if (!taskData) {
+          throw new Error('No task data received');
+        }
+        
+        // Update state with task information
+        setTaskStatus(taskData.status);
+        setTaskProgress(taskData.progress || 0);
         
         // If completed, stop polling and set video URL
-        if (data.status === 'completed' && data.result?.video_path) {
+        if (taskData.status === 'completed' && 
+            (taskData.result?.video_url || taskData.result?.video_file)) {
           clearInterval(interval);
-          setVideoUrl(`/api/video/${id}`);
+          setVideoUrl(taskData.result.video_url || 
+                      taskData.result.video_file?.url || 
+                      getVideoUrl(id));
         }
         
         // If failed, stop polling and show error
-        if (data.status === 'failed') {
+        if (taskData.status === 'failed') {
           clearInterval(interval);
-          setError(data.error || 'Video generation failed');
+          setError(taskData.error || 'Video generation failed');
         }
       } catch (error) {
         console.error('Status polling error:', error);
@@ -123,6 +154,7 @@ While still in early stages, quantum computing promises to revolutionize computi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Client-side validation
     if (!content || content.trim().length < 10) {
       setError('Content must be at least 10 characters long');
       return;
@@ -146,13 +178,24 @@ While still in early stages, quantum computing promises to revolutionize computi
         },
         image_gen: {
           style: imageStyle,
-          candidates_per_prompt: 1
+          candidates_per_prompt: 1,
+          semantic_cache_enabled: enableCache
         },
         llm: {
           use_meta_prompting: useMetaPrompting,
           chain_of_thought: chainOfThought,
           few_shot_examples: fewShotExamples
-        }
+        },
+        algorithm: {
+          optimization_enabled: algorithmOptimization,
+          optimization_mode: algorithmMode,
+          include_templates: includePromptTemplates,
+          include_metrics: includeAlgorithmMetrics,
+          include_content_strategy: includeContentStrategy
+        },
+        hook: useCustomHook ? {
+          custom_hook: customHook
+        } : undefined
       };
       
       // Submit generation request
@@ -169,17 +212,27 @@ While still in early stages, quantum computing promises to revolutionize computi
         }),
       });
       
-      if (!response.ok) {
-        throw new Error('Generation request failed');
+      // Parse response as StandardResponse
+      const apiResponse: StandardResponse<any> = await response.json();
+      
+      // Check for errors in the API response
+      if (hasError(apiResponse)) {
+        throw new Error(extractError(apiResponse));
       }
       
-      const data = await response.json();
-      setTaskId(data.task_id);
-      setTaskStatus('queued');
+      // Extract data from standard response
+      const responseData = extractData(apiResponse);
+      
+      if (!responseData || !responseData.task_id) {
+        throw new Error('Invalid response: missing task ID');
+      }
+      
+      setTaskId(responseData.task_id);
+      setTaskStatus(responseData.status || 'queued');
       setTaskProgress(0);
       
       // Start polling for updates
-      startPolling(data.task_id);
+      startPolling(responseData.task_id);
       
     } catch (error) {
       console.error('Submission error:', error);
@@ -413,6 +466,53 @@ While still in early stages, quantum computing promises to revolutionize computi
                           <option value="painting">Painting</option>
                         </select>
                       </div>
+                      
+                      <div className="flex justify-between">
+                        <label htmlFor="enableCache" className="text-xs">
+                          Enable Semantic Cache
+                        </label>
+                        <input
+                          type="checkbox"
+                          id="enableCache"
+                          checked={enableCache}
+                          onChange={(e) => setEnableCache(e.target.checked)}
+                          className="rounded-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Hook Settings */}
+                  <div>
+                    <h3 className="font-medium mb-2">Hook Settings</h3>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <label htmlFor="useCustomHook" className="text-xs">
+                          Use Custom Hook
+                        </label>
+                        <input
+                          type="checkbox"
+                          id="useCustomHook"
+                          checked={useCustomHook}
+                          onChange={(e) => setUseCustomHook(e.target.checked)}
+                          className="rounded-sm"
+                        />
+                      </div>
+                      
+                      {useCustomHook && (
+                        <div>
+                          <label htmlFor="customHook" className="block text-xs mb-1">
+                            Custom Hook Text
+                          </label>
+                          <textarea
+                            id="customHook"
+                            value={customHook}
+                            onChange={(e) => setCustomHook(e.target.value)}
+                            placeholder="Enter a custom hook text to start your video..."
+                            className="w-full h-20 p-1.5 text-xs border border-input rounded-md bg-transparent"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                   
@@ -458,6 +558,86 @@ While still in early stages, quantum computing promises to revolutionize computi
                           className="rounded-sm"
                         />
                       </div>
+                    </div>
+                  </div>
+                  
+                  {/* Algorithm Optimization Settings */}
+                  <div className="md:col-span-2 mt-2">
+                    <h3 className="font-medium mb-2">Algorithm Optimization</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label htmlFor="algorithmOptimization" className="text-xs">
+                          Enable Algorithm Optimization
+                        </label>
+                        <input
+                          type="checkbox"
+                          id="algorithmOptimization"
+                          checked={algorithmOptimization}
+                          onChange={(e) => setAlgorithmOptimization(e.target.checked)}
+                          className="rounded-sm"
+                        />
+                      </div>
+                      
+                      {algorithmOptimization && (
+                        <>
+                          <div>
+                            <label htmlFor="algorithmMode" className="block text-xs mb-1">
+                              Optimization Mode
+                            </label>
+                            <select
+                              id="algorithmMode"
+                              value={algorithmMode}
+                              onChange={(e) => setAlgorithmMode(e.target.value as any)}
+                              className="w-full p-1.5 text-xs border border-input rounded-md bg-transparent"
+                            >
+                              <option value="balanced">Balanced (Value + Engagement)</option>
+                              <option value="maximum">Maximum Engagement (Algorithm-Optimized)</option>
+                              <option value="authentic">Authentic Value (Less Optimization)</option>
+                            </select>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="flex justify-between">
+                              <label htmlFor="includePromptTemplates" className="text-xs">
+                                Include Prompt Templates
+                              </label>
+                              <input
+                                type="checkbox"
+                                id="includePromptTemplates"
+                                checked={includePromptTemplates}
+                                onChange={(e) => setIncludePromptTemplates(e.target.checked)}
+                                className="rounded-sm"
+                              />
+                            </div>
+                            
+                            <div className="flex justify-between">
+                              <label htmlFor="includeAlgorithmMetrics" className="text-xs">
+                                Include Algorithm Metrics
+                              </label>
+                              <input
+                                type="checkbox"
+                                id="includeAlgorithmMetrics"
+                                checked={includeAlgorithmMetrics}
+                                onChange={(e) => setIncludeAlgorithmMetrics(e.target.checked)}
+                                className="rounded-sm"
+                              />
+                            </div>
+                            
+                            <div className="flex justify-between">
+                              <label htmlFor="includeContentStrategy" className="text-xs">
+                                Include Content Strategy
+                              </label>
+                              <input
+                                type="checkbox"
+                                id="includeContentStrategy"
+                                checked={includeContentStrategy}
+                                onChange={(e) => setIncludeContentStrategy(e.target.checked)}
+                                className="rounded-sm"
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -515,6 +695,23 @@ While still in early stages, quantum computing promises to revolutionize computi
                 {taskStatus}
               </span>
             </div>
+            
+            {/* Link to details page */}
+            {taskId && taskStatus && taskStatus !== 'completed' && (
+              <div className="mt-3 text-xs">
+                <a 
+                  href={`/task/${taskId}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline flex items-center gap-1"
+                >
+                  <span>View detailed progress</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </a>
+              </div>
+            )}
           </div>
           
           {/* Error message */}

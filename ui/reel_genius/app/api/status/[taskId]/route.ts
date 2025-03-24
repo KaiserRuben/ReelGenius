@@ -27,11 +27,25 @@ export async function GET(
   try {
     const { taskId } = await params;
     
+    // Import validation function
+    const { isValidTaskId } = await import('@/lib/types');
+    
+    // Validate task ID
     if (!taskId) {
-      return NextResponse.json(
-        { error: 'Task ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        status: 'error',
+        error: 'Task ID is required',
+        message: 'You must provide a task ID to check status'
+      }, { status: 400 });
+    }
+    
+    // Validate task ID format (UUID)
+    if (!isValidTaskId(taskId)) {
+      return NextResponse.json({
+        status: 'error',
+        error: 'Invalid task ID format',
+        message: 'The task ID must be a valid UUID'
+      }, { status: 400 });
     }
     
     if (isDebug) {
@@ -86,13 +100,34 @@ export async function GET(
       throw new Error(`Backend API returned ${response.status}: ${errorData.error || response.statusText}`);
     }
     
+    // Parse and validate the response
     const statusData = await response.json();
+    
+    // Import the validation functions
+    const { isStandardResponse, toStandardResponse } = await import('@/lib/types');
+    
+    // Validate and standardize the response
+    if (!isStandardResponse(statusData)) {
+      console.warn('Backend response not in standard format, converting:', statusData);
+      
+      // Create standardized response
+      return NextResponse.json(
+        toStandardResponse(statusData, response.ok)
+      );
+    }
+    
+    // Pass through if already standardized
     return NextResponse.json(statusData);
   } catch (error) {
     console.error('Task status fetch error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch task status', details: (error as Error).message },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      status: 'error',
+      error: 'Failed to fetch task status',
+      message: (error as Error).message,
+      meta: {
+        timestamp: new Date().toISOString(),
+        details: error instanceof Error ? error.stack : String(error)
+      }
+    }, { status: 500 });
   }
 }

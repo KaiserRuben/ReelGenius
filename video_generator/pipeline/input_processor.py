@@ -232,7 +232,7 @@ class InputProcessor:
 
             # Return processed input with original content preserved
             output = {
-                "content": content,  # Keep original content field
+                # Don't modify content field, just preserve it in original_content
                 "original_content": original_content,  # Add explicit original_content field
                 "input_analysis": input_analysis.model_dump(),
                 "content_strategy": content_strategy.model_dump(),
@@ -243,6 +243,10 @@ class InputProcessor:
             for key, value in state.items():
                 if key not in output:
                     output[key] = value
+                    
+            # Make sure the content field exists
+            if "content" not in output and "content" in state:
+                output["content"] = state["content"]
 
             return output
 

@@ -97,13 +97,42 @@ export async function POST(request: NextRequest) {
             throw new Error(`Backend API returned ${response.status}: ${errorData.error || response.statusText}`);
         }
 
+        // Parse response to ensure it's a proper StandardResponse
         const data = await response.json();
+        
+        // Verify response format
+        if (!data || typeof data !== 'object') {
+            throw new Error('Invalid response format from backend');
+        }
+        
+        // Ensure it follows StandardResponse format
+        if (!('status' in data)) {
+            // Convert to standard format if not already
+            return NextResponse.json({
+                status: response.ok ? 'success' : 'error',
+                data: response.ok ? data : null,
+                error: !response.ok ? 'Backend error' : undefined,
+                message: response.ok ? 'Video generation request successful' : 'Video generation failed',
+                meta: { 
+                    raw_response: data,
+                    timestamp: new Date().toISOString()
+                }
+            });
+        }
+        
+        // If already in standard format, pass through
         return NextResponse.json(data);
     } catch (error) {
         console.error('Video generation error:', error);
-        return NextResponse.json(
-            {error: 'Failed to generate video', details: (error as Error).message},
-            {status: 500}
-        );
+        // Return in standard format
+        return NextResponse.json({
+            status: 'error',
+            error: 'Failed to generate video',
+            message: (error as Error).message,
+            meta: { 
+                timestamp: new Date().toISOString(),
+                details: error instanceof Error ? error.stack : String(error)
+            }
+        }, {status: 500});
     }
 }

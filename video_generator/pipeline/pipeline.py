@@ -14,7 +14,7 @@ try:
     # Define a schema for the state
     class GraphState(TypedDict, total=False):
         """State schema for the LangGraph workflow."""
-        content: Annotated[str, "last"]  # Original content
+        content: str  # Original content (removed Annotated since we want to pass it through all steps)
         run_id: str  # Unique ID for this run
         original_content: Optional[str]  # Original content (preserved)
         input_analysis: Optional[Dict[str, Any]]  # Results of content analysis
@@ -175,7 +175,16 @@ class VideoPipeline:
         # Call progress callback if available
         if "progress_callback" in state and callable(state["progress_callback"]):
             try:
-                state["progress_callback"](progress)
+                # Check for task_id, which might be needed by some callbacks
+                task_id = state.get("task_id")
+                if task_id is None:
+                    task_id = state.get("run_id")  # Use run_id as fallback
+
+                # Call callback with task_id if available
+                if task_id:
+                    state["progress_callback"](progress, task_id=task_id)
+                else:
+                    state["progress_callback"](progress)
             except Exception as e:
                 logger.error(f"Error calling progress callback: {e}")
 
@@ -228,13 +237,13 @@ class VideoPipeline:
 
         return wrapper
 
-    def run(self, content: str, output_path: Optional[str] = None,
+    def run(self, content: str, output_path: Optional[str] = None, task_id: Optional[str] = None,
             progress_callback: Optional[Callable[[float], None]] = None) -> Dict[str, Any]:
         """Run the full video generation pipeline."""
         start_time = time.time()
 
-        # Generate a unique ID for this run
-        run_id = str(uuid.uuid4())
+        # Generate a unique ID for this run if not provided
+        run_id = task_id or str(uuid.uuid4())
 
         try:
             # Set output path if provided
@@ -245,6 +254,7 @@ class VideoPipeline:
             initial_state = {
                 "content": content,
                 "run_id": run_id,
+                "task_id": task_id,  # Store task_id separately for progress callbacks
                 "progress": 0.0
             }
 

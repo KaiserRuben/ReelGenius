@@ -202,8 +202,11 @@ class ScriptGenerator:
                 "passes_quality_check": True
             }
 
-    def process(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+    def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Generate and validate a script."""
+        # Create a copy of state to avoid modifying the original
+        processed_input = state.copy()
+        
         # Add content to original_content if not present
         # This ensures compatibility throughout the pipeline
         if "original_content" not in processed_input and "content" in processed_input:
@@ -233,8 +236,9 @@ class ScriptGenerator:
             # Check again
             quality_check = self.quality_check_script(script, processed_input)
 
-        # Add all data directly to the state instead of nesting
-        result = processed_input.copy()
+        # Start with the original state to maintain all fields
+        result = state.copy()
+        # Add our new data
         result["script"] = script.model_dump()
         result["script_quality"] = quality_check
         
