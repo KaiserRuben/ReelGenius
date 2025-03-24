@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TaskStatus } from './StatusBadge';
+import { TaskStatus } from '@/lib/types';
 
 export interface ProcessStage {
   id: string;
@@ -105,7 +105,7 @@ export default function ProgressIndicator({
     });
     
     setStages(updatedStages);
-  }, [progress, status, stages]);
+  }, [progress, status]);
   
   // Calculate stage-specific progress
   const getCurrentStageProgress = () => {

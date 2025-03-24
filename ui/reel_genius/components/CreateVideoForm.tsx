@@ -7,8 +7,14 @@ import { StandardResponse, extractData, hasError, extractError } from '@/lib/typ
 import ProgressIndicator from './ProgressIndicator';
 import VideoPlayer from './VideoPlayer';
 
-// This component uses platformData in the JSX at line 43-63
-export default function CreateVideoForm() {
+// Import PlatformsResponse type for the prop
+import { PlatformsResponse } from '@/lib/api';
+
+interface CreateVideoFormProps {
+  platformData?: PlatformsResponse;
+}
+
+export default function CreateVideoForm({ platformData }: CreateVideoFormProps) {
   const router = useRouter();
   const [content, setContent] = useState('');
   const [platform, setPlatform] = useState<PlatformType>('tiktok');
@@ -273,10 +279,17 @@ While still in early stages, quantum computing promises to revolutionize computi
                 disabled={isLoading}
                 className="w-full p-2 border border-input rounded-md bg-transparent"
               >
-                <option value="tiktok">TikTok</option>
-                <option value="youtube_shorts">YouTube Shorts</option>
-                <option value="instagram_reels">Instagram Reels</option>
-                <option value="general">General</option>
+                {platformData && platformData.platforms ? 
+                  platformData.platforms.map((p) => (
+                    <option key={p} value={p}>{p.replace('_', ' ').toUpperCase()}</option>
+                  )) : (
+                  <>
+                    <option value="tiktok">TikTok</option>
+                    <option value="youtube_shorts">YouTube Shorts</option>
+                    <option value="instagram_reels">Instagram Reels</option>
+                    <option value="general">General</option>
+                  </>
+                )}
               </select>
             </div>
             

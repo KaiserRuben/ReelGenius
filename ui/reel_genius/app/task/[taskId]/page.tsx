@@ -1,440 +1,278 @@
-import { getTaskStatus, getSceneImageUrl, getSceneAudioUrl, getVideoUrl, SceneMediaInfo, TaskData } from '@/lib/api';
-import { extractData } from '@/lib/types';
-import StatusBadge from '@/components/StatusBadge';
-import VideoPlayer from '@/components/VideoPlayer';
-import MediaGallery, { MediaItem } from '@/components/MediaGallery';
-import AlgorithmMetricsPanel from '@/components/AlgorithmMetricsPanel';
-import PromptTemplateViewer from '@/components/PromptTemplateViewer';
-import SceneDetailsViewer from '@/components/SceneDetailsViewer';
-import ContentStrategy from '@/components/ContentStrategy';
-import CacheStats from '@/components/CacheStats';
-import TaskProgress from '@/components/TaskProgress';
-import Link from 'next/link';
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
+import { getTaskStatus, getVideoUrl, getSceneImageUrl, getSceneAudioUrl } from '@/lib/api';
+import { isValidTaskId, VideoResponse, SceneMedia } from '@/lib/types';
+import VideoPlayer from '@/components/VideoPlayer';
+import StatusBadge from '@/components/StatusBadge';
+import ProgressIndicator from '@/components/ProgressIndicator';
 
-export const dynamic = 'force-dynamic';
-
-interface PageProps {
-  params: Promise<{ taskId: string }>
+interface TaskDetailParams {
+  params: {
+    taskId: string;
+  };
 }
 
-export default async function TaskDetailPage({
-  params
-}: PageProps) {
-  const { taskId } = await params;
+export default async function TaskDetailPage({ params }: TaskDetailParams) {
+  const paramsData = await params;
+  const { taskId } = paramsData;
   
-  // Server-side data fetching with new standardized response format
-  const response = await getTaskStatus(taskId, true).catch((error) => {
-    console.error('Error fetching task:', error);
-    return null;
-  });
-  
-  if (!response) {
+  // Validate taskId format
+  if (!isValidTaskId(taskId)) {
     notFound();
   }
   
-  // Extract the task data from our standardized response
-  let taskData: TaskData;
   try {
-    const extractedData = extractData(response);
-    if (!extractedData) {
-      notFound();
+    // Fetch task data with full details
+    const response = await getTaskStatus(taskId, true);
+    
+    if (!response || response.status === 'error') {
+      throw new Error(response?.error || 'Failed to load task');
     }
-    taskData = extractedData as TaskData;
-  } catch (error) {
-    console.error('Error processing task data:', error);
+    
+    const taskData = response.data as VideoResponse;
+    
     return (
-      <div className="max-w-5xl mx-auto">
-        <div className="card p-6 border-destructive">
-          <h1 className="text-3xl font-bold mb-2">Error Loading Task</h1>
-          <p className="text-muted-foreground mb-4">
-            {response.error || "Failed to load task data"}
+      <div className="max-w-6xl mx-auto">
+        <div className="flex flex-col mb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-3xl font-bold">Task {taskId.substring(0, 8)}</h1>
+            <StatusBadge status={taskData.status} size="lg" />
+          </div>
+          <p className="text-muted-foreground">
+            Platform: <span className="font-medium">{taskData.platform || 'Not specified'}</span> | 
+            Created: <span className="font-medium">{taskData.created_at ? new Date(taskData.created_at * 1000).toLocaleString() : 'Unknown'}</span>
           </p>
-          <Link href="/history" className="button-primary inline-block">
-            Back to History
-          </Link>
         </div>
-      </div>
-    );
-  }
-  
-  // Format timestamp
-  const formatTime = (timestamp?: number) => {
-    if (!timestamp) return 'N/A';
-    
-    const date = new Date(timestamp * 1000);
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    }).format(date);
-  };
-  
-  // Format file size
-  const formatFileSize = (bytes?: number) => {
-    if (!bytes) return 'N/A';
-    
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  };
-  
-  // Prepare media items for gallery if video is completed
-  const mediaItems: MediaItem[] = [];
-  
-  if (taskData.status === 'completed' && taskData.result?.scenes) {
-    // Add scene images and audio from the new data structure
-    taskData.result.scenes.forEach((scene: SceneMediaInfo, index: number) => {
-      if (scene.image_url) {
-        mediaItems.push({
-          type: 'image',
-          url: scene.image_url,
-          title: `Scene ${index + 1} Image`,
-          index,
-        });
-      } else if (scene.index !== undefined) {
-        // Fall back to generated URL if direct URL not provided
-        mediaItems.push({
-          type: 'image',
-          url: getSceneImageUrl(taskId, scene.index),
-          title: `Scene ${index + 1} Image`,
-          index: scene.index
-        });
-      }
-      
-      if (scene.audio_url) {
-        mediaItems.push({
-          type: 'audio',
-          url: scene.audio_url,
-          title: `Scene ${index + 1} Audio`,
-          index: mediaItems.length,
-        });
-      } else if (scene.index !== undefined) {
-        // Fall back to generated URL if direct URL not provided
-        mediaItems.push({
-          type: 'audio',
-          url: getSceneAudioUrl(taskId, scene.index),
-          title: `Scene ${index + 1} Audio`,
-          index: mediaItems.length
-        });
-      }
-    });
-    
-    // Add hook audio if available (falling back to traditional path if needed)
-    if (taskData.result.hook_audio_url) {
-      mediaItems.push({
-        type: 'audio',
-        url: taskData.result.hook_audio_url,
-        title: 'Hook Audio',
-        index: mediaItems.length
-      });
-    } else if (taskData.result.hook_audio_path) {
-      mediaItems.push({
-        type: 'audio',
-        url: getSceneAudioUrl(taskId, 'hook'),
-        title: 'Hook Audio',
-        index: mediaItems.length
-      });
-    }
-  }
-
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Video Task Details</h1>
-        <div className="flex items-center gap-3">
-          <p className="text-muted-foreground">Task ID: {taskId}</p>
-          <StatusBadge status={taskData.status} size="md" />
-          {taskData.result?.cache_stats?.money_saved > 0 && (
-            <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-1 rounded-full">
-              Saved ${taskData.result.cache_stats.money_saved.toFixed(2)}
-            </span>
-          )}
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Main content */}
-        <div className="md:col-span-2 space-y-6">
-          {/* Progress indicator for ongoing tasks */}
-          {(taskData.status === 'running' || taskData.status === 'queued') && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Generation Progress</h2>
-              
-              <TaskProgress taskData={taskData} />
+        
+        {/* Task status and progress */}
+        <div className="card p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">Status</h2>
+          <ProgressIndicator 
+            progress={taskData.progress || 0} 
+            status={taskData.status} 
+            showDetailedProgress={true} 
+            result={taskData.status === 'running' ? taskData : null}
+          />
+          
+          {taskData.execution_time && (
+            <div className="mt-4 text-sm">
+              <p className="text-muted-foreground">
+                Total processing time: <span className="font-medium">{Math.round(taskData.execution_time)} seconds</span>
+              </p>
             </div>
           )}
           
-          {/* Video player for completed videos */}
-          {taskData.status === 'completed' && (taskData.result?.video_url || taskData.result?.video_file) && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Generated Video</h2>
-              <VideoPlayer 
-                src={taskData.result.video_url || taskData.result.video_file?.url || getVideoUrl(taskId)}
-                title={taskData.result.metadata?.title || 'Generated Video'}
-              />
-              
-              <div className="mt-4 flex justify-center">
-                <a
-                  href={taskData.result.video_url || taskData.result.video_file?.url || getVideoUrl(taskId)}
-                  download
-                  className="button-primary"
-                >
-                  Download Video
-                </a>
-              </div>
-              
-              {taskData.result.video_file?.size_bytes && (
-                <div className="mt-2 text-sm text-center text-muted-foreground">
-                  File size: {formatFileSize(taskData.result.video_file.size_bytes)}
-                </div>
-              )}
-            </div>
-          )}
-          
-          {/* Media gallery for completed videos */}
-          {mediaItems.length > 0 && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Media Gallery</h2>
-              <MediaGallery items={mediaItems} taskId={taskId} />
-            </div>
-          )}
-          
-          {/* Scene Details Viewer */}
-          {taskData.status === 'completed' && taskData.result?.scenes && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Scene Details</h2>
-              <SceneDetailsViewer 
-                scenes={taskData.result.scenes} 
-                showPrompts={true} 
-              />
-            </div>
-          )}
-          
-          {/* Metadata for completed videos */}
-          {taskData.status === 'completed' && taskData.result?.metadata && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Video Metadata</h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Title</h3>
-                  <p>{taskData.result.metadata.title || 'Untitled'}</p>
-                </div>
-                
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Platform</h3>
-                  <p>{taskData.result.metadata.platform || taskData.platform || 'Unknown'}</p>
-                </div>
-                
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Duration</h3>
-                  <p>{taskData.result.metadata.duration?.toFixed(1) || 'Unknown'} seconds</p>
-                </div>
-                
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Resolution</h3>
-                  <p>{taskData.result.metadata.resolution || 'Unknown'}</p>
-                </div>
-                
-                <div className="md:col-span-2">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Description</h3>
-                  <p className="whitespace-pre-line">{taskData.result.metadata.description || 'No description'}</p>
-                </div>
-                
-                <div className="md:col-span-2">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Hashtags</h3>
-                  <div className="flex flex-wrap gap-1">
-                    {taskData.result.metadata.hashtags?.map((tag: string, index: number) => (
-                      <span 
-                        key={index}
-                        className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs rounded-full"
-                      >
-                        {tag}
-                      </span>
-                    )) || 'No hashtags'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Algorithm Optimization Metrics */}
-          {taskData.status === 'completed' && taskData.result?.algorithm_metrics && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Algorithm Optimization Metrics</h2>
-              <AlgorithmMetricsPanel data={taskData.result} />
-            </div>
-          )}
-          
-          {/* Content Strategy & Analysis */}
-          {taskData.status === 'completed' && (taskData.result?.content_strategy || taskData.result?.content_analysis || taskData.result?.visual_plan) && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Content Strategy</h2>
-              <ContentStrategy 
-                contentStrategy={taskData.result?.content_strategy}
-                contentAnalysis={taskData.result?.content_analysis}
-                visualPlan={taskData.result?.visual_plan}
-              />
-            </div>
-          )}
-          
-          {/* Cache Statistics */}
-          {taskData.status === 'completed' && taskData.result?.cache_stats && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Cache Performance</h2>
-              <CacheStats cacheStats={taskData.result.cache_stats} />
-            </div>
-          )}
-          
-          {/* Prompt Templates Viewer */}
-          {taskData.status === 'completed' && taskData.result?.prompt_templates && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Prompt Templates</h2>
-              <PromptTemplateViewer templates={taskData.result.prompt_templates} />
-            </div>
-          )}
-          
-          {/* Error information for failed tasks */}
-          {taskData.status === 'failed' && taskData.error && (
-            <div className="card p-6 border-destructive">
-              <h2 className="text-lg font-medium mb-4 text-destructive">Error Details</h2>
-              <div className="p-3 bg-destructive/10 rounded-md">
-                <p className="text-destructive whitespace-pre-line">{taskData.error}</p>
-              </div>
+          {taskData.error && (
+            <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 rounded-md">
+              <h3 className="font-semibold">Error</h3>
+              <p>{taskData.error}</p>
             </div>
           )}
         </div>
         
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Task information */}
-          <div className="card p-6">
-            <h2 className="text-lg font-medium mb-4">Task Information</h2>
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Status</h3>
-                <StatusBadge status={taskData.status} />
-              </div>
-              
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
-                <p className="text-sm">{formatTime(taskData.created_at)}</p>
-              </div>
-              
-              {taskData.updated_at && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Last Updated</h3>
-                  <p className="text-sm">{formatTime(taskData.updated_at)}</p>
-                </div>
-              )}
-              
-              {taskData.platform && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Platform</h3>
-                  <p className="text-sm">{taskData.platform}</p>
-                </div>
-              )}
-              
-              {taskData.execution_time && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Execution Time</h3>
-                  <p className="text-sm">{taskData.execution_time.toFixed(1)} seconds</p>
-                </div>
-              )}
-            </div>
+        {/* Content summary */}
+        {taskData.content_summary && (
+          <div className="card p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-2">Content</h2>
+            <p className="text-muted-foreground whitespace-pre-wrap">{taskData.content_summary}</p>
           </div>
-          
-          {/* Video details */}
-          {taskData.status === 'completed' && taskData.result && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Video Details</h2>
-              <div className="space-y-3">
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">File Size</h3>
-                  <p className="text-sm">
-                    {formatFileSize(taskData.result.video_file?.size_bytes || taskData.result.metadata?.file_size)}
-                  </p>
-                </div>
+        )}
+        
+        {/* Video player for completed tasks */}
+        {taskData.status === 'completed' && taskData.video && (
+          <div className="card p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Generated Video</h2>
+            <Suspense fallback={<div className="animate-pulse h-64 bg-muted rounded-lg"></div>}>
+              <VideoPlayer
+                src={getVideoUrl(taskId)}
+                title={taskData.metadata?.title || 'Generated Video'}
+                controls={true}
+                width="100%"
+                height="auto"
+              />
+            </Suspense>
+            
+            {taskData.metadata && (
+              <div className="mt-4 space-y-2">
+                <h3 className="font-semibold">Metadata</h3>
                 
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Scene Count</h3>
-                  <p className="text-sm">
-                    {taskData.result.scene_count || taskData.result.scenes?.length || 0} scenes
-                  </p>
-                </div>
+                {taskData.metadata.title && (
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <span className="text-muted-foreground">Title:</span>
+                    <span className="col-span-2 font-medium">{taskData.metadata.title}</span>
+                  </div>
+                )}
                 
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Category</h3>
-                  <p className="text-sm">
-                    {taskData.result.metadata?.category || 'Uncategorized'}
-                  </p>
-                </div>
+                {taskData.metadata.description && (
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <span className="text-muted-foreground">Description:</span>
+                    <span className="col-span-2">{taskData.metadata.description}</span>
+                  </div>
+                )}
                 
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">Has Hook</h3>
-                  <p className="text-sm">
-                    {taskData.result.hook_audio_url || taskData.result.hook_audio_path ? 'Yes' : 'No'}
-                  </p>
-                </div>
+                {taskData.metadata.hashtags && taskData.metadata.hashtags.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <span className="text-muted-foreground">Hashtags:</span>
+                    <div className="col-span-2 flex flex-wrap gap-1">
+                      {taskData.metadata.hashtags.map((tag, idx) => (
+                        <span key={idx} className="bg-secondary text-secondary-foreground rounded-md px-2 py-0.5 text-xs">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
-                {taskData.execution_time && (
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Generation Time</h3>
-                    <p className="text-sm">
-                      {Math.round(taskData.execution_time)} seconds
-                    </p>
+                {taskData.metadata.duration && (
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <span className="text-muted-foreground">Duration:</span>
+                    <span className="col-span-2">{taskData.metadata.duration.toFixed(2)} seconds</span>
+                  </div>
+                )}
+                
+                {taskData.metadata.resolution && (
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <span className="text-muted-foreground">Resolution:</span>
+                    <span className="col-span-2">{taskData.metadata.resolution}</span>
+                  </div>
+                )}
+                
+                {taskData.video.size_bytes && (
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <span className="text-muted-foreground">File size:</span>
+                    <span className="col-span-2">{Math.round(taskData.video.size_bytes / 1024 / 1024 * 100) / 100} MB</span>
                   </div>
                 )}
               </div>
-            </div>
-          )}
-          
-          {/* Content preview */}
-          {taskData.content_summary && (
-            <div className="card p-6">
-              <h2 className="text-lg font-medium mb-4">Content Preview</h2>
-              <div className="max-h-40 overflow-y-auto text-sm text-muted-foreground">
-                {taskData.content_summary}
-              </div>
-            </div>
-          )}
-          
-          {/* Actions */}
-          <div className="card p-6">
-            <h2 className="text-lg font-medium mb-4">Actions</h2>
-            <div className="space-y-3">
-              <Link
-                href="/history"
-                className="button-secondary w-full flex justify-center"
-              >
-                Back to History
-              </Link>
-              
-              {taskData.status === 'completed' && (taskData.result?.video_url || taskData.result?.video_file) && (
-                <a
-                  href={taskData.result.video_url || taskData.result.video_file?.url || getVideoUrl(taskId)}
-                  download
-                  className="button-primary w-full flex justify-center"
-                >
-                  Download Video
-                </a>
-              )}
-              
-              <Link
-                href="/"
-                className="text-primary text-sm hover:underline w-full flex justify-center"
-              >
-                Create New Video
-              </Link>
+            )}
+          </div>
+        )}
+        
+        {/* Scenes section for completed tasks */}
+        {taskData.status === 'completed' && taskData.scenes && taskData.scenes.length > 0 && (
+          <div className="card p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Scenes</h2>
+            <div className="space-y-6">
+              {taskData.scenes.map((scene: SceneMedia) => (
+                <div key={scene.index} className="p-4 border border-border rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="font-semibold">Scene {scene.index + 1}</h3>
+                    <span className="text-xs text-muted-foreground">({scene.duration.toFixed(2)}s)</span>
+                  </div>
+                  
+                  {/* Scene text */}
+                  <p className="text-sm mb-4">{scene.text}</p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Scene image */}
+                    {scene.image_url && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Image</h4>
+                        <div className="relative aspect-video bg-black/5 dark:bg-white/5 rounded-lg overflow-hidden">
+                          <img 
+                            src={getSceneImageUrl(taskId, scene.index.toString())} 
+                            alt={`Scene ${scene.index + 1}`}
+                            className="object-cover w-full h-full"
+                          />
+                        </div>
+                        
+                        {scene.image_prompt && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            <strong>Prompt:</strong> {scene.image_prompt}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Scene audio */}
+                    {scene.audio_url && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Audio</h4>
+                        <audio 
+                          src={getSceneAudioUrl(taskId, scene.index.toString())} 
+                          controls 
+                          className="w-full" 
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          Duration: {scene.duration.toFixed(2)}s
+                          {scene.audio_size_bytes && ` | Size: ${Math.round(scene.audio_size_bytes / 1024)} KB`}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
+        )}
+        
+        {/* Media info for completed tasks */}
+        {taskData.status === 'completed' && taskData.media_info && (
+          <div className="card p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Media Information</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Total Scenes:</span>
+                  <span className="font-medium">{taskData.scene_count || taskData.scenes?.length || 0}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Images:</span>
+                  <span className="font-medium">{taskData.media_info.image_count || 0}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Audio Clips:</span>
+                  <span className="font-medium">{taskData.media_info.audio_count || 0}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Has Hook:</span>
+                  <span className="font-medium">{taskData.media_info.has_hook ? 'Yes' : 'No'}</span>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Video Size:</span>
+                  <span className="font-medium">
+                    {taskData.media_info.video_size_bytes 
+                      ? `${Math.round(taskData.media_info.video_size_bytes / 1024 / 1024 * 100) / 100} MB` 
+                      : 'Unknown'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Images Size:</span>
+                  <span className="font-medium">
+                    {taskData.media_info.total_image_size_bytes 
+                      ? `${Math.round(taskData.media_info.total_image_size_bytes / 1024 / 1024 * 100) / 100} MB` 
+                      : 'Unknown'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Audio Size:</span>
+                  <span className="font-medium">
+                    {taskData.media_info.total_audio_size_bytes 
+                      ? `${Math.round(taskData.media_info.total_audio_size_bytes / 1024 / 1024 * 100) / 100} MB` 
+                      : 'Unknown'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  } catch (error) {
+    console.error('Error loading task:', error);
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="card p-6">
+          <h1 className="text-2xl font-bold mb-4 text-destructive">Error Loading Task</h1>
+          <p>Failed to load task information. The task may not exist or there was a network error.</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Task ID: {taskId}
+          </p>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 }
